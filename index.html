@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>前端 7z 解压（自动下载）示例</title>
+    <title>前端 7z 加密资源</title>
     <style>
         body { 
             font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans CJK SC"; 
@@ -14,41 +14,31 @@
         #files { margin-top: 12px; }
         .entry { margin: 6px 0; }
         pre { white-space: pre-wrap; background:#f6f6f6; padding:8px; border-radius:6px; }
-
         #fileInput,#password,#listBtn,#extractBtn,#dropArea,#globalDropOverlay {
             display: none !important;
         }
     </style>
 </head>
 <body>
-
-    <h2>前端 7z 解压（自动从 URL 下载）</h2>
-    <div id="status">正在等待下载 6.7z...</div>
-
+    <h2>前端 7z 加密资源</h2>
+    <div id="status">正在等待下载 7z 加密压缩包</div>
     <div id="files"></div>
     <hr/>
     <div id="preview"></div>
-
 <script type="module">
-/* ---------------------- DOM 元素 ---------------------- */
 const statusEl = document.getElementById('status');
 const filesDiv = document.getElementById('files');
 const previewDiv = document.getElementById('preview');
 const status = (s) => statusEl.textContent = s;
-
-/* ---------------------- WASM ---------------------- */
 const wasmUrl = 'https://cdn.jsdelivr.net/gh/use-strict/7z-wasm@v1.2.0/7zz.es6.js';
 let SevenZip = null;
 let stdoutBuffer = [];
 let stderrBuffer = [];
-
 async function ensureSevenZip() {
     if (SevenZip) return SevenZip;
     status('加载 7z-wasm (WASM)...');
-
     const m = await import(wasmUrl);
     SevenZip = (m.default ?? m);
-
     status('7z-wasm 已加载');
     return SevenZip;
 }
@@ -58,66 +48,49 @@ function escapeHtml(s) {
         '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
     }[c]));
 }
-
-/* ---------------------- 解压核心 ---------------------- */
 async function extractAndPreview(archiveData, password) {
     const Seven = await ensureSevenZip();
-
     stdoutBuffer = [];
     stderrBuffer = [];
-
     const seven = await Seven({
         print: t => stdoutBuffer.push(t),
         printErr: t => stderrBuffer.push(t),
     });
-
     filesDiv.innerHTML = '';
     previewDiv.innerHTML = '';
-
     const name = '/archive_' + Date.now();
     seven.FS.writeFile(name, archiveData);
-
     status(password ? '尝试密码解压...' : '尝试无密码解压...');
-
     const outdir = '/out_' + Date.now();
     try { seven.FS.mkdir(outdir); } catch(e){}
-
     const passArg = password ? '-p' + password : '-p';
-
     try {
         seven.callMain(['x', passArg, name, '-o' + outdir, '-y']);
     } catch (e) {
         const detail = stderrBuffer.join('\n') || e.message;
-        throw new Error('解压失败: ' + detail);
+        throw new Error(detail);
     }
-
     if (stderrBuffer.length > 0) {
         throw new Error(stderrBuffer.join('\n'));
     }
-
     status('解压完成，读取文件列表...');
-
     function listDir(path) {
         try {
             return seven.FS.readdir(path).filter(n => n !== '.' && n !== '..');
         } catch (_) { return []; }
     }
-
     const files = listDir(outdir);
     if (files.length === 0) {
         filesDiv.textContent = '解压成功，但没有文件（密码错误？）';
-        return;
+        throw new Error("空目录（可能密码错误）");
     }
-
     for (const filename of files) {
         const full = outdir + '/' + filename;
         const btn = document.createElement('button');
         btn.textContent = '预览 ' + filename;
-
         btn.onclick = () => {
             const data = seven.FS.readFile(full);
             const ext = filename.split('.').pop().toLowerCase();
-
             if (['png','jpg','jpeg','gif','webp','bmp'].includes(ext)) {
                 const blob = new Blob([data.buffer], { type: 'image/' + (ext === 'jpg' ? 'jpeg' : ext) });
                 const url = URL.createObjectURL(blob);
@@ -141,48 +114,41 @@ async function extractAndPreview(archiveData, password) {
 
     status('解压完成，可点击文件预览。');
 }
-
-/* ---------------------- 自动下载 + 自动解压 ---------------------- */
 async function start() {
     const url = "6.7z";
     status("从服务器下载 6.7z 中...");
-
     let data;
     try {
         const res = await fetch(url);
-        if (!res.ok) throw new Error("HTTP 状态：" + res.status);
-        const buf = await res.arrayBuffer();
-        data = new Uint8Array(buf);
-        status("下载完成，大小 " + data.length + " 字节。");
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        data = new Uint8Array(await res.arrayBuffer());
     } catch (e) {
         status("下载失败：" + e.message);
         return;
     }
-
-    // 1. 无密码尝试
+    status("下载完成，大小 " + data.length + " 字节。");
     try {
         await extractAndPreview(data, '');
         return;
-    } catch (e1) {
-        // 2. 输入密码
-        const pwd = prompt("文件可能已加密，请输入密码：");
-        if (!pwd) {
-            status("未提供密码，解压结束。");
+    } catch (_) {
+        console.log("无密码失败，进入密码循环。");
+    }
+    while (true) {
+        const pwd = prompt("文件已加密，请输入密码：\n（取消将终止解压）");
+
+        if (pwd === null) {
+            status("用户取消解压。");
             return;
         }
-
         try {
             await extractAndPreview(data, pwd);
-        } catch (e2) {
-            status("带密码解压失败。");
-            alert("最终解压失败：密码不正确或文件损坏。");
+            return; //
+        } catch (err) {
+            alert("密码错误，请重新输入！");
         }
     }
 }
-
 start();
 </script>
-
 </body>
 </html>
-新网站
