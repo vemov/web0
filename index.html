@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>解压资源</title>
+    <title>资源解密</title>
     <style>
         body { 
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -509,12 +509,11 @@ async function startApp(rawUrl) {
     const hasProtocol = trimmedUrl.startsWith('http://') || trimmedUrl.startsWith('https://');
     let urlsToTry = [];
     
-    if (hasProtocol) {
-        // 如果已包含协议，只尝试一次
-        urlsToTry.push(trimmedUrl);
-    } else {
-        // 1. 尝试相对路径/原始输入 (用户请求: 根目录/本地)
-        urlsToTry.push(trimmedUrl);
+    // 无论是否有协议，都优先将原始输入作为第一个尝试（可能是相对路径或完整链接）
+    urlsToTry.push(trimmedUrl);
+    
+    if (!hasProtocol) {
+        // 如果原始输入不包含协议（可能是相对路径），再尝试添加协议头
         // 2. 尝试 HTTP (用户请求: 添加 http://)
         urlsToTry.push('http://' + trimmedUrl);
         // 3. 尝试 HTTPS (外部链接兼容性)
@@ -530,6 +529,14 @@ async function startApp(rawUrl) {
     for (const url of urlsToTry) {
         status("尝试下载: " + url);
         try {
+            // 检查URL是否为数字开头但没有点号，以避免 "http://6/5.7z" 这种错误的域名推断
+            const isPotentialMistakenDomain = !hasProtocol && /^\d+[\/].*$/.test(trimmedUrl) && url !== trimmedUrl;
+
+            if (isPotentialMistakenDomain) {
+                 // 这种情况下，如果第一个尝试（相对路径）失败，则很可能后面的带协议的尝试也是无效的域名。
+                 console.warn(`警告: URL "${url}" 看起来像错误的域名推断。如果相对路径失败，请确保您输入了完整的域名。`);
+            }
+            
             downloadResult = await fetchWithUrl(url);
             finalUrl = url;
             break; 
@@ -561,8 +568,9 @@ async function startApp(rawUrl) {
         const pwd = prompt("文件已加密，请输入密码：");
 
         if (pwd === null) {
-            status("用户取消解压");
-            return;
+            // 虽然用户取消了密码输入，但仍然显示状态，并要求用户重新输入
+            alert("请必须输入密码才能继续解压。");
+            continue; 
         }
         try {
             await extractAndPreview(data, pwd);
@@ -589,18 +597,12 @@ async function init() {
         }
     }
     
-    while (!url) {
+    while (true) { // 强制循环，直到成功加载
         await ensureSevenZip();
         
         url = prompt("缺少参数，请输入 7z 压缩包的路径：");
         
         if (url === null || url.trim().length === 0) {
-            alert("需要输入 7z 压缩包的路径");
-            url = null; 
-            continue;
-        }
-        
-        if (url.trim().length === 0) {
             alert("路径不能为空，请重新输入。");
             url = null; 
             continue;
@@ -611,7 +613,7 @@ async function init() {
             return; 
         } catch (e) {
             alert(`加载文件失败: ${e.message}\n请检查路径是否正确。`);
-            url = null;
+            url = null; 
         }
     }
 }
