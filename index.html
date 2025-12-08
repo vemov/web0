@@ -81,6 +81,13 @@
             transition: background-color 0.2s;
             border-radius: 6px;
         }
+
+        .entry-file, .entry-dir {
+            -webkit-user-select: none; /* 针对 iOS Safari */
+            user-select: none;
+            -webkit-touch-callout: none; /* 禁用长按链接/图片时的呼出菜单 */
+        }
+
         .entry-file:hover {
             background-color: #f0f9ff;
         }
