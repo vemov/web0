@@ -12,6 +12,20 @@
             margin: 0;
             background-color: #f0f2f5;
         }
+            body, body * {
+                user-select: none;
+            }
+
+        #preview, #preview * {
+            user-select: text !important;
+        }
+
+        h2 {
+            color: #1e3a8a;
+            border-bottom: 2px solid #e0e7ff;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
         #status {
             margin-bottom: 20px;
             font-size: 1.15em;
@@ -59,7 +73,6 @@
             display: none;
         }
         
-
         .entry-file {
             cursor: pointer;
             padding: 8px 20px;
@@ -79,7 +92,7 @@
             border-radius: 12px;
             box-shadow: 0 6px 15px rgba(0, 0, 0, 0.1);
             border-top: 5px solid #1e3a8a;
-            display: none; /* 默认隐藏预览区 */
+            display: none; 
         }
         #preview h4 {
             margin-top: 0;
@@ -104,24 +117,118 @@
             border-radius: 6px;
         }
 
+        .download-menu {
+            position: fixed;
+            background: white;
+            border: 1px solid #ccc;
+            padding: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            border-radius: 8px;
+            z-index: 1000;
+            display: none;
+        }
+        .download-menu button {
+            display: block;
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 5px;
+            border: none;
+            background: #1e40af;
+            color: white;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .download-menu button:hover {
+            background: #1e3a8a;
+        }
+
         #fileInput,#password,#listBtn,#extractBtn,#dropArea,#globalDropOverlay {
             display: none !important;
         }
     </style>
 </head>
 <body>
+    <h2>前端 7z 加密资源</h2>
     <div id="status">正在等待下载 7z 加密压缩包</div>
     <div id="files"></div>
     <hr/>
     <div id="preview"></div>
+
+    <div id="downloadMenu" class="download-menu">
+        <div id="downloadFileName" style="font-weight: 600; margin-bottom: 10px; color: #1e3a8a;"></div>
+        <button id="downloadButton">下载文件</button>
+    </div>
+
 <script type="module">
 const statusEl = document.getElementById('status');
 const filesDiv = document.getElementById('files');
 const previewDiv = document.getElementById('preview');
+const downloadMenu = document.getElementById('downloadMenu');
+const downloadButton = document.getElementById('downloadButton');
+
 const status = (s) => statusEl.textContent = s;
 const wasmUrl = 'https://cdn.jsdelivr.net/gh/use-strict/7z-wasm@v1.2.0/7zz.es6.js';
 let SevenZip = null;
 let currentSeven = null; 
+
+
+function downloadFile(seven, node) {
+    let data;
+    try {
+        data = seven.FS.readFile(node.full); 
+    } catch (e) {
+        alert("读取文件失败，无法下载: " + e.message);
+        return;
+    }
+
+    const blob = new Blob([data.buffer], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = node.name; 
+    document.body.appendChild(a);
+    a.click();
+    
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    status(` "${node.name}" 文件。`);
+}
+
+function showDownloadMenu(node, clientX, clientY) {
+    document.getElementById('downloadFileName').textContent = node.name;
+    
+    downloadButton.onclick = (e) => {
+        e.stopPropagation(); 
+        hideDownloadMenu();
+        downloadFile(currentSeven, node);
+    };
+
+    const menuWidth = 200; 
+    const menuHeight = 100; 
+    let left = clientX;
+    let top = clientY;
+
+    if (clientX + menuWidth > window.innerWidth) {
+        left = window.innerWidth - menuWidth - 10;
+    }
+    if (clientY + menuHeight > window.innerHeight) {
+        top = window.innerHeight - menuHeight - 10;
+    }
+    
+    downloadMenu.style.left = `${left}px`;
+    downloadMenu.style.top = `${top}px`;
+    downloadMenu.style.display = 'block';
+}
+
+function hideDownloadMenu() {
+    downloadMenu.style.display = 'none';
+    downloadButton.onclick = null; 
+}
+
+document.addEventListener('click', hideDownloadMenu);
+document.addEventListener('contextmenu', hideDownloadMenu);
 
 async function ensureSevenZip() {
     if (SevenZip) return SevenZip;
@@ -189,11 +296,10 @@ function previewFile(seven, node) {
         data = seven.FS.readFile(node.full); 
     } catch (e) {
         previewDiv.innerHTML = `<h4>${node.name}</h4><p style="color:red;">读取文件失败: ${e.message}</p>`;
-        previewDiv.style.display = 'block'; // 显示预览区以显示错误
+        previewDiv.style.display = 'block'; 
         return;
     }
     
-    // 显示预览区
     previewDiv.style.display = 'block';
 
     const ext = node.name.split('.').pop().toLowerCase();
@@ -266,11 +372,36 @@ function renderTree(nodes, container) {
             const fileDiv = document.createElement('div');
             fileDiv.className = 'entry-file';
             fileDiv.textContent = node.name;
-            
             fileDiv.onclick = () => {
                 previewFile(currentSeven, node);
             };
 
+            let pressTimer;
+            const longPressDelay = 700; 
+
+            fileDiv.oncontextmenu = (e) => {
+                e.preventDefault(); 
+                e.stopPropagation();
+                hideDownloadMenu(); 
+                showDownloadMenu(node, e.clientX, e.clientY);
+            };
+
+            fileDiv.ontouchstart = (e) => {
+                e.stopPropagation();
+                pressTimer = setTimeout(() => {
+                    e.preventDefault(); 
+                    hideDownloadMenu();
+                    showDownloadMenu(node, e.touches[0].clientX, e.touches[0].clientY);
+                }, longPressDelay);
+            };
+
+            const clearTimer = () => {
+                clearTimeout(pressTimer);
+            };
+            fileDiv.ontouchend = clearTimer;
+            fileDiv.ontouchmove = clearTimer;
+            fileDiv.ontouchcancel = clearTimer;
+            
             container.appendChild(fileDiv);
         }
     });
@@ -290,7 +421,7 @@ async function extractAndPreview(archiveData, password) {
     
     filesDiv.innerHTML = '';
     previewDiv.innerHTML = '';
-    previewDiv.style.display = 'none'; // 确保在解压开始时隐藏
+    previewDiv.style.display = 'none';
 
     const name = '/archive_' + Date.now();
     seven.FS.writeFile(name, archiveData);
@@ -340,7 +471,7 @@ async function extractAndPreview(archiveData, password) {
     
     renderTree(tree, filesDiv);
 
-    status('解压成功，点击文件进行预览');
+    status('解压成功，点击文件进行预览。可下载文件。');
 }
 
 async function start() {
