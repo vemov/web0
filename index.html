@@ -13,17 +13,16 @@
             background-color: #f0f2f5;
         }
 
-        /* 仅保留文本不可选中 (user-select: none) */
         body * {
             -webkit-user-select: none;
             user-select: none;
-            /* 移除 -webkit-touch-callout: none; 以允许移动端更自由地处理触摸和点击 */
         }
         
         #preview, #preview * {
             user-select: text !important;
             -webkit-user-select: text !important;
         }
+        
         #status {
             margin-bottom: 20px;
             font-size: 1.15em;
@@ -167,6 +166,7 @@ const status = (s) => statusEl.textContent = s;
 const wasmUrl = 'https://cdn.jsdelivr.net/gh/use-strict/7z-wasm@v1.2.0/7zz.es6.js';
 let SevenZip = null;
 let currentSeven = null; 
+
 function downloadFile(seven, node) {
     let data;
     try {
@@ -345,8 +345,8 @@ function renderTree(nodes, container) {
             if (node.children && node.children.length > 0) {
                 renderTree(node.children, contentDiv);
             } else {
-                 contentDiv.textContent = '(空目录)';
-                 contentDiv.style.color = '#999';
+                contentDiv.textContent = '(空目录)';
+                contentDiv.style.color = '#999';
             }
 
             dirDiv.onclick = (e) => {
@@ -384,16 +384,11 @@ function renderTree(nodes, container) {
             };
 
             fileDiv.ontouchstart = (e) => {
-                // 修复点：移除 e.preventDefault()，允许短按触发 onclick
                 e.stopPropagation();
-                
                 pressTimer = setTimeout(() => {
-                    // 修复点：在长按计时器内部调用 e.preventDefault()，仅在长按时阻止默认行为（例如浏览器自带的上下文菜单和随后的点击）
-                    e.preventDefault(); 
                     hideDownloadMenu();
-                    // 为了安全地获取坐标，检查 touches 数组
-                    const clientX = (e.touches && e.touches[0]) ? e.touches[0].clientX : window.innerWidth / 2;
-                    const clientY = (e.touches && e.touches[0]) ? e.touches[0].clientY : window.innerHeight / 2;
+                    const clientX = e.touches && e.touches[0] ? e.touches[0].clientX : window.innerWidth / 2;
+                    const clientY = e.touches && e.touches[0] ? e.touches[0].clientY : window.innerHeight / 2;
                     showDownloadMenu(node, clientX, clientY);
                 }, longPressDelay);
             };
@@ -478,55 +473,26 @@ async function extractAndPreview(archiveData, password) {
 }
 
 
-/** 核心修改：在 404 错误时尝试切换到 http:// */
 async function fetchWithUrl(url) {
-    status("尝试下载: " + url);
     
-    const initialUrl = url;
-    let res = await fetch(initialUrl).catch(e => {
-        console.warn(`第一次尝试 (${initialUrl}) 失败:`, e);
-        return null; // 捕获网络错误，不抛出
+    const res = await fetch(url).catch(e => {
+        throw { 
+            status: 'Network Error', 
+            message: e.message, 
+            url: url
+        }; 
     });
     
-    if (!res || res.status === 404) {
-        let fallbackUrl = null;
-        try {
-            const u = new URL(initialUrl);
-            if (u.protocol === 'https:') {
-                u.protocol = 'http:';
-                fallbackUrl = u.href;
-            }
-        } catch (e) {
-            if (!initialUrl.startsWith('http')) {
-                fallbackUrl = 'http://' + initialUrl;
-            }
-        }
-
-        if (fallbackUrl && fallbackUrl !== initialUrl) {
-            status(`第一次尝试 404 或失败，尝试备用 URL: ${fallbackUrl}`);
-            console.log("尝试备用 URL:", fallbackUrl);
-            
-            res = await fetch(fallbackUrl);
-            
-            if (res.ok) {
-                return { 
-                    data: new Uint8Array(await res.arrayBuffer()), 
-                    finalUrl: fallbackUrl 
-                };
-            }
-        }
-    }
-
-    if (res && res.ok) {
+    if (res.ok) {
         return { 
             data: new Uint8Array(await res.arrayBuffer()), 
-            finalUrl: initialUrl 
+            finalUrl: url 
         };
     } else {
         throw { 
-            status: res ? res.status : 'Network Error', 
-            message: res ? `HTTP ${res.status}: ${res.statusText}` : '无法连接到服务器', 
-            url: initialUrl
+            status: res.status, 
+            message: `HTTP ${res.status}: ${res.statusText}`, 
+            url: url
         };
     }
 }
@@ -534,21 +500,43 @@ async function fetchWithUrl(url) {
 async function startApp(rawUrl) {
     await ensureSevenZip();
     
-    const finalUrl = rawUrl.trim(); 
+    const trimmedUrl = rawUrl.trim(); 
 
-    if (finalUrl.length === 0) {
+    if (trimmedUrl.length === 0) {
         throw new Error("文件路径不能为空。");
     }
-
-    console.log("最终尝试下载的 URL:", finalUrl);
+    
+    const hasProtocol = trimmedUrl.startsWith('http://') || trimmedUrl.startsWith('https://');
+    let urlsToTry = [];
+    
+    if (hasProtocol) {
+        // 如果已包含协议，只尝试一次
+        urlsToTry.push(trimmedUrl);
+    } else {
+        // 1. 尝试相对路径/原始输入 (用户请求: 根目录/本地)
+        urlsToTry.push(trimmedUrl);
+        // 2. 尝试 HTTP (用户请求: 添加 http://)
+        urlsToTry.push('http://' + trimmedUrl);
+        // 3. 尝试 HTTPS (外部链接兼容性)
+        urlsToTry.push('https://' + trimmedUrl);
+    }
 
     let downloadResult = null;
     let lastError = null;
+    let finalUrl = '';
 
-    try {
-        downloadResult = await fetchWithUrl(finalUrl);
-    } catch (error) {
-        lastError = error;
+    console.log("尝试的 URL 顺序:", urlsToTry.join(', '));
+
+    for (const url of urlsToTry) {
+        status("尝试下载: " + url);
+        try {
+            downloadResult = await fetchWithUrl(url);
+            finalUrl = url;
+            break; 
+        } catch (error) {
+            console.warn(`下载尝试 ${url} 失败:`, error.message);
+            lastError = error;
+        }
     }
 
     if (!downloadResult) {
@@ -596,8 +584,8 @@ async function init() {
             await startApp(url);
             return;
         } catch (e) {
-             alert(`自动加载文件失败: ${e.message}\n将进入手动输入模式。`);
-             url = null;
+            alert(`自动加载文件失败: ${e.message}\n将进入手动输入模式。`);
+            url = null;
         }
     }
     
@@ -606,9 +594,10 @@ async function init() {
         
         url = prompt("缺少参数，请输入 7z 压缩包的路径：");
         
-        if (url === null) {
-            status("用户取消加载");
-            return;
+        if (url === null || url.trim().length === 0) {
+            alert("需要输入 7z 压缩包的路径");
+            url = null; 
+            continue;
         }
         
         if (url.trim().length === 0) {
