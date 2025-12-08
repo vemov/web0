@@ -12,12 +12,15 @@
             margin: 0;
             background-color: #f0f2f5;
         }
-            body, body * {
-                user-select: none;
-            }
 
+        body * {
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
+        }
         #preview, #preview * {
             user-select: text !important;
+            -webkit-user-select: text !important;
         }
 
         h2 {
@@ -33,6 +36,10 @@
             font-weight: 500;
         }
         
+        #input-container {
+            display: none !important;
+        }
+        
         #files { 
             margin-top: 20px; 
             background-color: #ffffff;
@@ -45,7 +52,6 @@
             cursor: pointer; 
             margin: 2px 0;
             padding: 8px 10px;
-            user-select: none;
             transition: background-color 0.2s;
             border-radius: 6px;
         }
@@ -65,7 +71,6 @@
             width: 15px;
             text-align: center;
         }
-        
         .dir-content {
             padding-left: 25px;
             border-left: 1px dashed #bfdbfe;
@@ -81,13 +86,6 @@
             transition: background-color 0.2s;
             border-radius: 6px;
         }
-
-        .entry-file, .entry-dir {
-            -webkit-user-select: none; /* 针对 iOS Safari */
-            user-select: none;
-            -webkit-touch-callout: none; /* 禁用长按链接/图片时的呼出菜单 */
-        }
-
         .entry-file:hover {
             background-color: #f0f9ff;
         }
@@ -157,7 +155,10 @@
 </head>
 <body>
     <h2>前端 7z 加密资源</h2>
-    <div id="status">正在等待下载 7z 加密压缩包</div>
+    <div id="status"></div>
+
+    <div id="input-container" style="display:none;"></div>
+
     <div id="files"></div>
     <hr/>
     <div id="preview"></div>
@@ -179,7 +180,6 @@ const wasmUrl = 'https://cdn.jsdelivr.net/gh/use-strict/7z-wasm@v1.2.0/7zz.es6.j
 let SevenZip = null;
 let currentSeven = null; 
 
-
 function downloadFile(seven, node) {
     let data;
     try {
@@ -200,7 +200,7 @@ function downloadFile(seven, node) {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     
-    status(` "${node.name}" 文件。`);
+    status(`文件 "${node.name}" 已开始下载。`);
 }
 
 function showDownloadMenu(node, clientX, clientY) {
@@ -335,7 +335,6 @@ function previewFile(seven, node) {
     }
 }
 
-
 function renderTree(nodes, container) {
     if (!currentSeven) return;
 
@@ -394,9 +393,9 @@ function renderTree(nodes, container) {
             };
 
             fileDiv.ontouchstart = (e) => {
+                e.preventDefault(); 
                 e.stopPropagation();
                 pressTimer = setTimeout(() => {
-                    e.preventDefault(); 
                     hideDownloadMenu();
                     showDownloadMenu(node, e.touches[0].clientX, e.touches[0].clientY);
                 }, longPressDelay);
@@ -471,40 +470,105 @@ async function extractAndPreview(archiveData, password) {
     const tree = recursiveListDir(seven, scanPath, scanPath);
 
     if (tree.length === 0) {
-        filesDiv.textContent = '解压成功，但没有可识别的条目。';
-        status('解压成功，但没有可识别的条目。');
+        filesDiv.textContent = '解压成功，但没有可识别的条目';
+        status('解压成功，但没有可识别的条目');
         return; 
     }
     
     renderTree(tree, filesDiv);
 
-    status('解压成功，点击文件进行预览。可下载文件。');
+    status('解压成功，点击文件进行预览。右键或长按文件可下载');
 }
 
-async function start() {
-    const url = "6.7z";
-    status("从服务器下载 7z 压缩包中...");
-    let data;
-    try {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error("HTTP " + res.status);
-        data = new Uint8Array(await res.arrayBuffer());
-    } catch (e) {
-        status("下载失败：" + e.message);
-        return;
+
+async function fetchWithUrl(url) {
+    status("尝试下载: " + url);
+    const res = await fetch(url);
+    if (res.ok) {
+        return { 
+            data: new Uint8Array(await res.arrayBuffer()), 
+            finalUrl: url 
+        };
+    } else {
+        throw { 
+            status: res.status, 
+            message: `HTTP ${res.status}: ${res.statusText}`, 
+            url: url
+        };
     }
+}
+
+async function startApp(rawUrl) {
+    const trimmedUrl = rawUrl.trim();
+    const isProtocolPresent = trimmedUrl.startsWith('http://') || trimmedUrl.startsWith('https://');
+    let attempts = [];
+    
+    if (isProtocolPresent) {
+        attempts.push(trimmedUrl);
+    } else if (trimmedUrl.includes('/') || trimmedUrl.includes('.')) {
+        
+        try {
+            const relativeUrl = new URL(trimmedUrl, window.location.href).href;
+            attempts.push(relativeUrl);
+        } catch (e) {
+            console.warn("相对路径解析失败:", e);
+        }
+
+        attempts.push(`https://${trimmedUrl}`);
+        attempts.push(`http://${trimmedUrl}`);
+
+    } else {
+        attempts.push(`https://${trimmedUrl}`);
+        attempts.push(`http://${trimmedUrl}`);
+    }
+
+    attempts = [...new Set(attempts)];
+    
+    let downloadResult = null;
+    let lastError = null;
+    
+    console.log("尝试 URL 列表:", attempts);
+
+    for (const url of attempts) {
+        try {
+            downloadResult = await fetchWithUrl(url);
+            break;
+        } catch (error) {
+            lastError = error;
+            
+            if (error.status === 404) {
+                console.warn(`URL 尝试失败 (404): ${url}`);
+                continue;
+            } else {
+                throw lastError; 
+            }
+        }
+    }
+
+    if (!downloadResult) {
+        throw lastError; 
+    }
+
+    const finalUrl = downloadResult.finalUrl;
+    const currentUrl = new URL(window.location.href);
+    currentUrl.searchParams.set('url', finalUrl);
+    window.history.pushState({}, '', currentUrl); 
+    
+    const data = downloadResult.data;
     status("下载完成，大小 " + data.length + " 字节。");
+    
     try {
         await extractAndPreview(data, '');
         return;
     } catch (_) {
         console.log("无密码或文件损坏，进入密码循环。");
     }
+    
     while (true) {
-        const pwd = prompt("文件已加密，请输入密码：\n（取消将终止解压）");
+        const pwd = prompt("文件已加密，请输入密码：");
 
         if (pwd === null) {
-            status("用户取消解压。");
+            status("用户取消解压");
             return;
         }
         try {
@@ -515,7 +579,46 @@ async function start() {
         }
     }
 }
-start();
+
+async function init() {
+    const params = new URLSearchParams(window.location.search);
+    let url = params.get('url');
+
+    if (url) {
+        try {
+            await startApp(url);
+            return;
+        } catch (e) {
+             alert(`自动加载文件失败: ${e.message}\n将进入手动输入模式。`);
+             url = null;
+        }
+    }
+    
+    while (!url) {
+        url = prompt("缺少参数，请输入 7z 压缩包的路径：");
+        
+        if (url === null) {
+            status("用户取消加载");
+            return;
+        }
+        
+        if (url.trim().length === 0) {
+            alert("路径不能为空，请重新输入。");
+            url = null; 
+            continue;
+        }
+
+        try {
+            await startApp(url.trim());
+            return; 
+        } catch (e) {
+            alert(`加载文件失败: ${e.message}\n请检查路径是否正确或网络连接。`);
+            url = null;
+        }
+    }
+}
+
+init();
 </script>
 </body>
 </html>
