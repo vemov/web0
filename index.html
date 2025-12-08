@@ -13,11 +13,13 @@
             background-color: #f0f2f5;
         }
 
+        /* 仅保留文本不可选中 (user-select: none) */
         body * {
             -webkit-user-select: none;
             user-select: none;
-            -webkit-touch-callout: none;
+            /* 移除 -webkit-touch-callout: none; 以允许移动端更自由地处理触摸和点击 */
         }
+        
         #preview, #preview * {
             user-select: text !important;
             -webkit-user-select: text !important;
@@ -382,11 +384,17 @@ function renderTree(nodes, container) {
             };
 
             fileDiv.ontouchstart = (e) => {
-                e.preventDefault(); 
+                // 修复点：移除 e.preventDefault()，允许短按触发 onclick
                 e.stopPropagation();
+                
                 pressTimer = setTimeout(() => {
+                    // 修复点：在长按计时器内部调用 e.preventDefault()，仅在长按时阻止默认行为（例如浏览器自带的上下文菜单和随后的点击）
+                    e.preventDefault(); 
                     hideDownloadMenu();
-                    showDownloadMenu(node, e.touches[0].clientX, e.touches[0].clientY);
+                    // 为了安全地获取坐标，检查 touches 数组
+                    const clientX = (e.touches && e.touches[0]) ? e.touches[0].clientX : window.innerWidth / 2;
+                    const clientY = (e.touches && e.touches[0]) ? e.touches[0].clientY : window.innerHeight / 2;
+                    showDownloadMenu(node, clientX, clientY);
                 }, longPressDelay);
             };
 
