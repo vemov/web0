@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>资源解密</title>
+    <title>资源</title>
     <style>
         body { 
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -30,7 +30,7 @@
             font-weight: 500;
         }
         
-        #input-container {
+        #input-container, #fileInput,#password,#listBtn,#extractBtn,#dropArea,#globalDropOverlay {
             display: none !important;
         }
         
@@ -41,121 +41,148 @@
             border-radius: 12px;
             box-shadow: 0 6px 15px rgba(0, 0, 0, 0.08);
         }
-        
-        .entry-dir { 
-            cursor: pointer; 
-            margin: 2px 0;
-            padding: 8px 10px;
-            transition: background-color 0.2s;
-            border-radius: 6px;
-        }
-        .entry-dir:hover { 
-            background-color: #e3f2fd;
-        }
-        .dir-name {
-            font-weight: 600;
-            color: #1e40af;
-            display: flex;
-            align-items: center;
-        }
-        .dir-icon {
-            margin-right: 10px;
-            font-size: 1.1em;
-            color: #4b5563; 
-            width: 15px;
-            text-align: center;
-        }
-        .dir-content {
-            padding-left: 25px;
-            border-left: 1px dashed #bfdbfe;
-            margin-left: 15px;
-            display: none;
-        }
-        
-        .entry-file {
-            cursor: pointer;
-            padding: 8px 20px;
-            margin: 2px 0;
-            color: #0369a1;
-            transition: background-color 0.2s;
-            border-radius: 6px;
-        }
-        .entry-file:hover {
-            background-color: #f0f9ff;
-        }
+
+        .entry-dir { cursor: pointer; margin: 2px 0; padding: 8px 10px; transition: background-color 0.2s; border-radius: 6px; }
+        .entry-dir:hover { background-color: #e3f2fd; }
+        .dir-name { font-weight: 600; color: #1e40af; display: flex; align-items: center; }
+        .dir-icon { margin-right: 10px; font-size: 1.1em; color: #4b5563; width: 15px; text-align: center; }
+        .dir-content { padding-left: 25px; border-left: 1px dashed #bfdbfe; margin-left: 15px; display: none; }
+        .entry-file { cursor: pointer; padding: 8px 20px; margin: 2px 0; color: #0369a1; transition: background-color 0.2s; border-radius: 6px; }
+        .entry-file:hover { background-color: #f0f9ff; }
 
         #preview {
-            margin-top: 30px;
-            padding: 25px;
-            background-color: #ffffff;
-            border-radius: 12px;
-            box-shadow: 0 6px 15px rgba(0, 0, 0, 0.1);
-            border-top: 5px solid #1e3a8a;
-            display: none; 
+            margin-top: 30px; padding: 25px; background-color: #ffffff; border-radius: 12px;
+            box-shadow: 0 6px 15px rgba(0, 0, 0, 0.1); border-top: 5px solid #1e3a8a; display: none; 
         }
-        #preview h4 {
-            margin-top: 0;
-            color: #1e3a8a;
-            border-bottom: 1px solid #eee;
-            padding-bottom: 10px;
-            font-size: 1.2em;
-        }
-        pre { 
-            white-space: pre-wrap; 
-            background:#f3f4f6; 
-            padding:15px; 
-            border-radius:8px; 
-            border: 1px solid #e5e7eb;
-            font-size: 0.9em;
-        }
-        img {
-            display: block;
-            max-width: 100%;
-            height: auto;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-        }
+        #preview h4 { margin-top: 0; color: #1e3a8a; border-bottom: 1px solid #eee; padding-bottom: 10px; font-size: 1.2em; }
+        pre { white-space: pre-wrap; background:#f3f4f6; padding:15px; border-radius:8px; border: 1px solid #e5e7eb; font-size: 0.9em; }
+        img { display: block; max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 6px; }
 
         .download-menu {
-            position: fixed;
-            background: white;
-            border: 1px solid #ccc;
-            padding: 10px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            border-radius: 8px;
-            z-index: 1000;
-            display: none;
+            position: fixed; background: white; border: 1px solid #ccc; padding: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            border-radius: 8px; z-index: 1000; display: none;
         }
         .download-menu button {
-            display: block;
-            width: 100%;
-            padding: 8px;
-            margin-bottom: 5px;
-            border: none;
-            background: #1e40af;
-            color: white;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: background 0.2s;
+            display: block; width: 100%; padding: 8px; margin-bottom: 5px; border: none; background: #1e40af;
+            color: white; border-radius: 4px; cursor: pointer; transition: background 0.2s;
         }
-        .download-menu button:hover {
-            background: #1e3a8a;
+        .download-menu button:hover { background: #1e3a8a; }
+
+        #prompt-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7); 
+            display: none; 
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+            backdrop-filter: blur(3px); 
+        }
+        #prompt-modal {
+            background: #ffffff;
+            padding: 0; 
+            border-radius: 16px; 
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3); 
+            width: 90%;
+            max-width: 450px; 
+            overflow: hidden; 
+            text-align: left;
+            transform: scale(1.0); 
+            animation: fadeInScale 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
         }
 
-        #fileInput,#password,#listBtn,#extractBtn,#dropArea,#globalDropOverlay {
-            display: none !important;
+        @keyframes fadeInScale {
+            from {
+                opacity: 0;
+                transform: scale(0.95);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1.0);
+            }
+        }
+
+        #prompt-content {
+            padding: 30px;
+            padding-top: 20px;
+        }
+
+        #prompt-message {
+            margin-bottom: 15px;
+            font-size: 1em;
+            color: #4b5563;
+            font-weight: 400;
+            text-align: center;
+        }
+
+        #prompt-input {
+            width: 100%;
+            padding: 14px 15px; 
+            margin: 10px 0 25px 0;
+            border: 1px solid #d1d5db; 
+            border-radius: 10px; 
+            box-sizing: border-box;
+            font-size: 1.05em;
+            transition: border-color 0.3s, box-shadow 0.3s, background-color 0.3s;
+            outline: none;
+            background-color: #f9fafb; 
+        }
+        #prompt-input:focus {
+            border-color: #1e40af; 
+            box-shadow: 0 0 0 4px rgba(30, 64, 175, 0.1); 
+            background-color: #fff;
+        }
+
+        #prompt-actions {
+            text-align: right;
+        }
+
+        #prompt-confirm-btn {
+            padding: 12px 25px; 
+            background: #1e40af;
+            color: white;
+            border: none;
+            border-radius: 10px; 
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: 600;
+            transition: background 0.2s, transform 0.1s;
+            box-shadow: 0 4px 10px rgba(30, 64, 175, 0.3); 
+        }
+        #prompt-confirm-btn:hover {
+            background: #15348c; 
+        }
+        #prompt-confirm-btn:active {
+            transform: scale(0.98);
+            box-shadow: 0 2px 5px rgba(30, 64, 175, 0.3);
         }
     </style>
 </head>
 <body>
     <div id="status"></div>
-    <div id="input-container" style="display:none;"></div>
+    <div id="input-container"></div>
     <div id="files"></div>
     <div id="preview"></div>
     <div id="downloadMenu" class="download-menu">
         <div id="downloadFileName" style="font-weight: 600; margin-bottom: 10px; color: #1e3a8a;"></div>
         <button id="downloadButton">下载文件</button>
     </div>
+
+    <div id="prompt-modal-overlay">
+        <div id="prompt-modal">
+            <div id="prompt-content">
+                <div id="prompt-message"></div>
+                <input type="text" id="prompt-input" placeholder="请输入路径或密码" />
+                <div id="prompt-actions">
+                    <button id="prompt-confirm-btn">确认</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
 <script type="module">
 const statusEl = document.getElementById('status');
 const filesDiv = document.getElementById('files');
@@ -166,6 +193,41 @@ const status = (s) => statusEl.textContent = s;
 const wasmUrl = 'https://cdn.jsdelivr.net/gh/use-strict/7z-wasm@v1.2.0/7zz.es6.js';
 let SevenZip = null;
 let currentSeven = null; 
+
+const modalOverlay = document.getElementById('prompt-modal-overlay');
+const modalMessage = document.getElementById('prompt-message');
+const modalInput = document.getElementById('prompt-input');
+const modalConfirmBtn = document.getElementById('prompt-confirm-btn');
+
+function showPromptModal(message, isPassword = false) {
+    return new Promise(resolve => {
+        modalMessage.textContent = message;
+        modalInput.value = '';
+        modalInput.type = isPassword ? 'password' : 'text';
+        modalInput.placeholder = isPassword ? '请输入密码' : '请输入 7z 压缩包的路径';
+        modalOverlay.style.display = 'flex';
+        modalInput.focus();
+
+        const handler = () => {
+            const result = modalInput.value.trim();
+            modalOverlay.style.display = 'none';
+            modalConfirmBtn.removeEventListener('click', handler);
+            modalInput.removeEventListener('keydown', keydownHandler);
+            resolve(result); 
+        };
+
+        const keydownHandler = (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                handler();
+            }
+        };
+
+        modalConfirmBtn.addEventListener('click', handler);
+        modalInput.addEventListener('keydown', keydownHandler);
+    });
+}
+
 
 function downloadFile(seven, node) {
     let data;
@@ -508,15 +570,9 @@ async function startApp(rawUrl) {
     
     const hasProtocol = trimmedUrl.startsWith('http://') || trimmedUrl.startsWith('https://');
     let urlsToTry = [];
-    
-    // 无论是否有协议，都优先将原始输入作为第一个尝试（可能是相对路径或完整链接）
     urlsToTry.push(trimmedUrl);
-    
     if (!hasProtocol) {
-        // 如果原始输入不包含协议（可能是相对路径），再尝试添加协议头
-        // 2. 尝试 HTTP (用户请求: 添加 http://)
         urlsToTry.push('http://' + trimmedUrl);
-        // 3. 尝试 HTTPS (外部链接兼容性)
         urlsToTry.push('https://' + trimmedUrl);
     }
 
@@ -529,11 +585,8 @@ async function startApp(rawUrl) {
     for (const url of urlsToTry) {
         status("尝试下载: " + url);
         try {
-            // 检查URL是否为数字开头但没有点号，以避免 "http://6/5.7z" 这种错误的域名推断
             const isPotentialMistakenDomain = !hasProtocol && /^\d+[\/].*$/.test(trimmedUrl) && url !== trimmedUrl;
-
             if (isPotentialMistakenDomain) {
-                 // 这种情况下，如果第一个尝试（相对路径）失败，则很可能后面的带协议的尝试也是无效的域名。
                  console.warn(`警告: URL "${url}" 看起来像错误的域名推断。如果相对路径失败，请确保您输入了完整的域名。`);
             }
             
@@ -565,10 +618,9 @@ async function startApp(rawUrl) {
     }
     
     while (true) {
-        const pwd = prompt("文件已加密，请输入密码：");
+        const pwd = await showPromptModal("文件已加密，请输入密码：", true);
 
-        if (pwd === null) {
-            // 虽然用户取消了密码输入，但仍然显示状态，并要求用户重新输入
+        if (pwd.length === 0) {
             alert("请必须输入密码才能继续解压。");
             continue; 
         }
@@ -597,12 +649,11 @@ async function init() {
         }
     }
     
-    while (true) { // 强制循环，直到成功加载
+    while (true) { 
         await ensureSevenZip();
+        url = await showPromptModal("请输入 7z 压缩包的路径：", false);
         
-        url = prompt("缺少参数，请输入 7z 压缩包的路径：");
-        
-        if (url === null || url.trim().length === 0) {
+        if (url.trim().length === 0) {
             alert("路径不能为空，请重新输入。");
             url = null; 
             continue;
@@ -613,7 +664,7 @@ async function init() {
             return; 
         } catch (e) {
             alert(`加载文件失败: ${e.message}\n请检查路径是否正确。`);
-            url = null; 
+            url = null;
         }
     }
 }
