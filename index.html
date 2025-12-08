@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>7z 加密资源</title>
+    <title>解压资源</title>
     <style>
         body { 
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -150,26 +150,21 @@
     <div id="status"></div>
     <div id="input-container" style="display:none;"></div>
     <div id="files"></div>
-    <hr/>
     <div id="preview"></div>
-
     <div id="downloadMenu" class="download-menu">
         <div id="downloadFileName" style="font-weight: 600; margin-bottom: 10px; color: #1e3a8a;"></div>
         <button id="downloadButton">下载文件</button>
     </div>
-
 <script type="module">
 const statusEl = document.getElementById('status');
 const filesDiv = document.getElementById('files');
 const previewDiv = document.getElementById('preview');
 const downloadMenu = document.getElementById('downloadMenu');
 const downloadButton = document.getElementById('downloadButton');
-
 const status = (s) => statusEl.textContent = s;
 const wasmUrl = 'https://cdn.jsdelivr.net/gh/use-strict/7z-wasm@v1.2.0/7zz.es6.js';
 let SevenZip = null;
 let currentSeven = null; 
-
 function downloadFile(seven, node) {
     let data;
     try {
@@ -229,10 +224,14 @@ document.addEventListener('contextmenu', hideDownloadMenu);
 
 async function ensureSevenZip() {
     if (SevenZip) return SevenZip;
-    status('加载 7z-wasm (WASM)...');
+    
+    status('加载 7z-wasm 模块...');
+    
     const m = await import(wasmUrl);
     SevenZip = (m.default ?? m);
-    status('7z-wasm 已加载');
+    
+    status('7z-wasm 已加载并初始化完成。');
+
     return SevenZip;
 }
 
@@ -467,7 +466,7 @@ async function extractAndPreview(archiveData, password) {
     
     renderTree(tree, filesDiv);
 
-    status('解压成功，点击文件进行预览。右键或长按文件可下载');
+    status('解压成功');
 }
 
 
@@ -489,57 +488,29 @@ async function fetchWithUrl(url) {
 }
 
 async function startApp(rawUrl) {
-    const trimmedUrl = rawUrl.trim();
-    const isProtocolPresent = trimmedUrl.startsWith('http://') || trimmedUrl.startsWith('https://');
-    let attempts = [];
+    await ensureSevenZip();
     
-    if (isProtocolPresent) {
-        attempts.push(trimmedUrl);
-    } else if (trimmedUrl.includes('/') || trimmedUrl.includes('.')) {
-        
-        try {
-            const relativeUrl = new URL(trimmedUrl, window.location.href).href;
-            attempts.push(relativeUrl);
-        } catch (e) {
-            console.warn("相对路径解析失败:", e);
-        }
+    const finalUrl = rawUrl.trim(); 
 
-        attempts.push(`https://${trimmedUrl}`);
-        attempts.push(`http://${trimmedUrl}`);
-
-    } else {
-        attempts.push(`https://${trimmedUrl}`);
-        attempts.push(`http://${trimmedUrl}`);
+    if (finalUrl.length === 0) {
+        throw new Error("文件路径不能为空。");
     }
 
-    attempts = [...new Set(attempts)];
-    
+    console.log("最终尝试下载的 URL:", finalUrl);
+
     let downloadResult = null;
     let lastError = null;
-    
-    console.log("尝试 URL 列表:", attempts);
 
-    for (const url of attempts) {
-        try {
-            downloadResult = await fetchWithUrl(url);
-            break;
-        } catch (error) {
-            lastError = error;
-            
-            if (error.status === 404) {
-                console.warn(`URL 尝试失败 (404): ${url}`);
-                continue;
-            } else {
-                throw lastError; 
-            }
-        }
+    try {
+        downloadResult = await fetchWithUrl(finalUrl);
+    } catch (error) {
+        lastError = error;
     }
 
     if (!downloadResult) {
-        throw lastError; 
+        throw lastError || new Error(`无法连接到 ${finalUrl}`); 
     }
 
-    const finalUrl = downloadResult.finalUrl;
     const currentUrl = new URL(window.location.href);
     currentUrl.searchParams.set('url', finalUrl);
     window.history.pushState({}, '', currentUrl); 
@@ -571,6 +542,8 @@ async function startApp(rawUrl) {
 }
 
 async function init() {
+    status('正在准备加载程序...');
+    
     const params = new URLSearchParams(window.location.search);
     let url = params.get('url');
 
@@ -585,6 +558,8 @@ async function init() {
     }
     
     while (!url) {
+        await ensureSevenZip();
+        
         url = prompt("缺少参数，请输入 7z 压缩包的路径：");
         
         if (url === null) {
@@ -602,7 +577,7 @@ async function init() {
             await startApp(url.trim());
             return; 
         } catch (e) {
-            alert(`加载文件失败: ${e.message}\n请检查路径是否正确或网络连接。`);
+            alert(`加载文件失败: ${e.message}\n请检查路径是否正确。`);
             url = null;
         }
     }
