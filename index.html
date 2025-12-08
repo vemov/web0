@@ -3,24 +3,113 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>前端 7z 加密资源</title>
+    <title>7z 加密资源</title>
     <style>
         body { 
-            font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans CJK SC"; 
-            padding: 18px; 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            padding: 30px; 
             min-height: 100vh;
             margin: 0;
+            background-color: #f0f2f5;
         }
-        #files { margin-top: 12px; }
-        .entry { margin: 6px 0; }
-        pre { white-space: pre-wrap; background:#f6f6f6; padding:8px; border-radius:6px; }
+        #status {
+            margin-bottom: 20px;
+            font-size: 1.15em;
+            color: #1e3a8a;
+            font-weight: 500;
+        }
+        
+        #files { 
+            margin-top: 20px; 
+            background-color: #ffffff;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 6px 15px rgba(0, 0, 0, 0.08);
+        }
+        
+        .entry-dir { 
+            cursor: pointer; 
+            margin: 2px 0;
+            padding: 8px 10px;
+            user-select: none;
+            transition: background-color 0.2s;
+            border-radius: 6px;
+        }
+        .entry-dir:hover { 
+            background-color: #e3f2fd;
+        }
+        .dir-name {
+            font-weight: 600;
+            color: #1e40af;
+            display: flex;
+            align-items: center;
+        }
+        .dir-icon {
+            margin-right: 10px;
+            font-size: 1.1em;
+            color: #4b5563; 
+            width: 15px;
+            text-align: center;
+        }
+        
+        .dir-content {
+            padding-left: 25px;
+            border-left: 1px dashed #bfdbfe;
+            margin-left: 15px;
+            display: none;
+        }
+        
+
+        .entry-file {
+            cursor: pointer;
+            padding: 8px 20px;
+            margin: 2px 0;
+            color: #0369a1;
+            transition: background-color 0.2s;
+            border-radius: 6px;
+        }
+        .entry-file:hover {
+            background-color: #f0f9ff;
+        }
+
+        #preview {
+            margin-top: 30px;
+            padding: 25px;
+            background-color: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 6px 15px rgba(0, 0, 0, 0.1);
+            border-top: 5px solid #1e3a8a;
+            display: none; /* 默认隐藏预览区 */
+        }
+        #preview h4 {
+            margin-top: 0;
+            color: #1e3a8a;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+            font-size: 1.2em;
+        }
+        pre { 
+            white-space: pre-wrap; 
+            background:#f3f4f6; 
+            padding:15px; 
+            border-radius:8px; 
+            border: 1px solid #e5e7eb;
+            font-size: 0.9em;
+        }
+        img {
+            display: block;
+            max-width: 100%;
+            height: auto;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+        }
+
         #fileInput,#password,#listBtn,#extractBtn,#dropArea,#globalDropOverlay {
             display: none !important;
         }
     </style>
 </head>
 <body>
-    <h2>前端 7z 加密资源</h2>
     <div id="status">正在等待下载 7z 加密压缩包</div>
     <div id="files"></div>
     <hr/>
@@ -32,8 +121,8 @@ const previewDiv = document.getElementById('preview');
 const status = (s) => statusEl.textContent = s;
 const wasmUrl = 'https://cdn.jsdelivr.net/gh/use-strict/7z-wasm@v1.2.0/7zz.es6.js';
 let SevenZip = null;
-let stdoutBuffer = [];
-let stderrBuffer = [];
+let currentSeven = null; 
+
 async function ensureSevenZip() {
     if (SevenZip) return SevenZip;
     status('加载 7z-wasm (WASM)...');
@@ -48,21 +137,168 @@ function escapeHtml(s) {
         '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
     }[c]));
 }
+
+function recursiveListDir(seven, rootPath, currentPath, relativeDir = '') {
+    let treeNodes = [];
+    
+    const S_IFDIR = 16384;
+    const S_IFREG = 32768;
+    const modeMask = 61440; 
+
+    try {
+        const entries = seven.FS.readdir(currentPath).filter(n => n !== '.' && n !== '..');
+
+        for (const entry of entries) {
+            const entryFullPath = currentPath + '/' + entry;
+            
+            let stat;
+            try {
+                stat = seven.FS.stat(entryFullPath);
+            } catch (e) {
+                console.warn("stat 失败，跳过条目：", entryFullPath, e);
+                continue; 
+            }
+            
+            const mode = stat.mode & modeMask;
+
+            if (mode === S_IFDIR) {
+                const node = {
+                    name: entry,
+                    full: entryFullPath,
+                    isDir: true,
+                    children: recursiveListDir(seven, rootPath, entryFullPath, entry)
+                };
+                treeNodes.push(node);
+            } else if (mode === S_IFREG) {
+                treeNodes.push({
+                    name: entry,
+                    full: entryFullPath,
+                    isDir: false
+                });
+            }
+        }
+    } catch (e) { 
+        console.error("readdir 失败，递归中断于：", currentPath, e);
+    }
+    return treeNodes;
+}
+
+function previewFile(seven, node) {
+    let data;
+    try {
+        data = seven.FS.readFile(node.full); 
+    } catch (e) {
+        previewDiv.innerHTML = `<h4>${node.name}</h4><p style="color:red;">读取文件失败: ${e.message}</p>`;
+        previewDiv.style.display = 'block'; // 显示预览区以显示错误
+        return;
+    }
+    
+    // 显示预览区
+    previewDiv.style.display = 'block';
+
+    const ext = node.name.split('.').pop().toLowerCase();
+    
+    if (data.length > 5 * 1024 * 1024 && !['png','jpg','jpeg','gif','webp','bmp'].includes(ext)) {
+        previewDiv.innerHTML = `<h4>${node.name}</h4><p style="color:orange;">文件太大 (${(data.length / 1024 / 1024).toFixed(2)}MB)，不进行文本预览。</p>`;
+        return;
+    }
+
+    if (['png','jpg','jpeg','gif','webp','bmp'].includes(ext)) {
+        const mimeType = 'image/' + (ext === 'jpg' ? 'jpeg' : ext);
+        const blob = new Blob([data.buffer], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        previewDiv.innerHTML =
+            `<h4>${node.name}</h4><img src="${url}"/>`;
+    } else {
+        let txt;
+        try { 
+            txt = new TextDecoder('utf-8').decode(data); 
+        }
+        catch { 
+            txt = '[二进制文件或编码错误，无法以文本显示]'; 
+        }
+        previewDiv.innerHTML =
+            `<h4>${node.name}</h4><pre>${escapeHtml(txt)}</pre>`;
+    }
+}
+
+
+function renderTree(nodes, container) {
+    if (!currentSeven) return;
+
+    nodes.forEach(node => {
+        if (node.isDir) {
+            const dirDiv = document.createElement('div');
+            dirDiv.className = 'entry-dir';
+
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'dir-name';
+            nameSpan.innerHTML = `<span class="dir-icon">▸</span> ${node.name}`;
+            dirDiv.appendChild(nameSpan);
+
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'dir-content';
+            
+            if (node.children && node.children.length > 0) {
+                renderTree(node.children, contentDiv);
+            } else {
+                 contentDiv.textContent = '(空目录)';
+                 contentDiv.style.color = '#999';
+            }
+
+            dirDiv.onclick = (e) => {
+                if (e.target !== dirDiv && e.target !== nameSpan && !e.target.classList.contains('dir-icon')) return; 
+                
+                const isExpanded = contentDiv.style.display === 'block';
+                if (isExpanded) {
+                    contentDiv.style.display = 'none';
+                    nameSpan.innerHTML = `<span class="dir-icon">▸</span> ${node.name}`;
+                } else {
+                    contentDiv.style.display = 'block';
+                    nameSpan.innerHTML = `<span class="dir-icon">▾</span> ${node.name}`; 
+                }
+            };
+            
+            container.appendChild(dirDiv);
+            container.appendChild(contentDiv);
+
+        } else {
+            const fileDiv = document.createElement('div');
+            fileDiv.className = 'entry-file';
+            fileDiv.textContent = node.name;
+            
+            fileDiv.onclick = () => {
+                previewFile(currentSeven, node);
+            };
+
+            container.appendChild(fileDiv);
+        }
+    });
+}
+
+
 async function extractAndPreview(archiveData, password) {
     const Seven = await ensureSevenZip();
-    stdoutBuffer = [];
-    stderrBuffer = [];
+    let stdoutBuffer = [];
+    let stderrBuffer = [];
+    
     const seven = await Seven({
         print: t => stdoutBuffer.push(t),
         printErr: t => stderrBuffer.push(t),
     });
+    currentSeven = seven;
+    
     filesDiv.innerHTML = '';
     previewDiv.innerHTML = '';
+    previewDiv.style.display = 'none'; // 确保在解压开始时隐藏
+
     const name = '/archive_' + Date.now();
     seven.FS.writeFile(name, archiveData);
     status(password ? '尝试密码解压...' : '尝试无密码解压...');
+    
     const outdir = '/out_' + Date.now();
     try { seven.FS.mkdir(outdir); } catch(e){}
+    
     const passArg = password ? '-p' + password : '-p';
     try {
         seven.callMain(['x', passArg, name, '-o' + outdir, '-y']);
@@ -70,53 +306,46 @@ async function extractAndPreview(archiveData, password) {
         const detail = stderrBuffer.join('\n') || e.message;
         throw new Error(detail);
     }
-    if (stderrBuffer.length > 0) {
+    
+    if (stderrBuffer.length > 0 && seven.EXITSTATUS !== 0) {
         throw new Error(stderrBuffer.join('\n'));
     }
-    status('解压完成，读取文件列表...');
-    function listDir(path) {
+    
+    status('解压完成，构建文件树结构...');
+    
+    let scanPath = outdir;
+    const rootList = seven.FS.readdir(outdir).filter(n => n !== '.' && n !== '..');
+    
+    if (rootList.length === 1) {
+        const only = rootList[0];
+        const subPath = outdir + '/' + only;
         try {
-            return seven.FS.readdir(path).filter(n => n !== '.' && n !== '..');
-        } catch (_) { return []; }
-    }
-    const files = listDir(outdir);
-    if (files.length === 0) {
-        filesDiv.textContent = '解压成功，但没有文件（密码错误？）';
-        throw new Error("空目录（可能密码错误）");
-    }
-    for (const filename of files) {
-        const full = outdir + '/' + filename;
-        const btn = document.createElement('button');
-        btn.textContent = '预览 ' + filename;
-        btn.onclick = () => {
-            const data = seven.FS.readFile(full);
-            const ext = filename.split('.').pop().toLowerCase();
-            if (['png','jpg','jpeg','gif','webp','bmp'].includes(ext)) {
-                const blob = new Blob([data.buffer], { type: 'image/' + (ext === 'jpg' ? 'jpeg' : ext) });
-                const url = URL.createObjectURL(blob);
-                previewDiv.innerHTML =
-                    `<h4>${filename}</h4><img src="${url}" style="max-width:90%;border:1px solid #ddd"/>`;
-            } else {
-                let txt;
-                try { txt = new TextDecoder().decode(data); }
-                catch { txt = '[二进制文件，无法以文本显示]'; }
-                previewDiv.innerHTML =
-                    `<h4>${filename}</h4><pre>${escapeHtml(txt)}</pre>`;
+            const stat = seven.FS.stat(subPath);
+            if ((stat.mode & 61440) === 16384) { 
+                console.log("自动深入：", only);
+                scanPath = subPath;
             }
-        };
-
-        const div = document.createElement('div');
-        div.className = 'entry';
-        div.appendChild(document.createTextNode(filename + ' '));
-        div.appendChild(btn);
-        filesDiv.appendChild(div);
+        } catch(e) {
+             console.warn("无法 stat 自动深入的目录:", e);
+        }
     }
 
-    status('解压完成，可点击文件预览。');
+    const tree = recursiveListDir(seven, scanPath, scanPath);
+
+    if (tree.length === 0) {
+        filesDiv.textContent = '解压成功，但没有可识别的条目。';
+        status('解压成功，但没有可识别的条目。');
+        return; 
+    }
+    
+    renderTree(tree, filesDiv);
+
+    status('解压成功，点击文件进行预览');
 }
+
 async function start() {
     const url = "6.7z";
-    status("从服务器下载 6.7z 中...");
+    status("从服务器下载 7z 压缩包中...");
     let data;
     try {
         const res = await fetch(url);
@@ -131,7 +360,7 @@ async function start() {
         await extractAndPreview(data, '');
         return;
     } catch (_) {
-        console.log("无密码失败，进入密码循环。");
+        console.log("无密码或文件损坏，进入密码循环。");
     }
     while (true) {
         const pwd = prompt("文件已加密，请输入密码：\n（取消将终止解压）");
@@ -142,7 +371,7 @@ async function start() {
         }
         try {
             await extractAndPreview(data, pwd);
-            return; //
+            return; 
         } catch (err) {
             alert("密码错误，请重新输入！");
         }
