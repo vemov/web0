@@ -470,19 +470,55 @@ async function extractAndPreview(archiveData, password) {
 }
 
 
+/** 核心修改：在 404 错误时尝试切换到 http:// */
 async function fetchWithUrl(url) {
     status("尝试下载: " + url);
-    const res = await fetch(url);
-    if (res.ok) {
+    
+    const initialUrl = url;
+    let res = await fetch(initialUrl).catch(e => {
+        console.warn(`第一次尝试 (${initialUrl}) 失败:`, e);
+        return null; // 捕获网络错误，不抛出
+    });
+    
+    if (!res || res.status === 404) {
+        let fallbackUrl = null;
+        try {
+            const u = new URL(initialUrl);
+            if (u.protocol === 'https:') {
+                u.protocol = 'http:';
+                fallbackUrl = u.href;
+            }
+        } catch (e) {
+            if (!initialUrl.startsWith('http')) {
+                fallbackUrl = 'http://' + initialUrl;
+            }
+        }
+
+        if (fallbackUrl && fallbackUrl !== initialUrl) {
+            status(`第一次尝试 404 或失败，尝试备用 URL: ${fallbackUrl}`);
+            console.log("尝试备用 URL:", fallbackUrl);
+            
+            res = await fetch(fallbackUrl);
+            
+            if (res.ok) {
+                return { 
+                    data: new Uint8Array(await res.arrayBuffer()), 
+                    finalUrl: fallbackUrl 
+                };
+            }
+        }
+    }
+
+    if (res && res.ok) {
         return { 
             data: new Uint8Array(await res.arrayBuffer()), 
-            finalUrl: url 
+            finalUrl: initialUrl 
         };
     } else {
         throw { 
-            status: res.status, 
-            message: `HTTP ${res.status}: ${res.statusText}`, 
-            url: url
+            status: res ? res.status : 'Network Error', 
+            message: res ? `HTTP ${res.status}: ${res.statusText}` : '无法连接到服务器', 
+            url: initialUrl
         };
     }
 }
