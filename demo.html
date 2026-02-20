@@ -2,42 +2,40 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>XML Blob Generator</title>
+<title>Adder API</title>
 </head>
 <body>
-
 <script>
 function getParam(name) {
     const url = new URL(window.location.href);
     return url.searchParams.get(name);
 }
 
-const msg = getParam("msg") || "empty";
-
-// XML 转义
 function escapeXML(str) {
-    return str.replace(/[<>&'"]/g, function(c) {
-        return {
-            '<': '&lt;',
-            '>': '&gt;',
-            '&': '&amp;',
-            "'": '&apos;',
-            '"': '&quot;'
-        }[c];
-    });
+    return str.replace(/[<>&'"]/g, c => ({
+        '<': '&lt;',
+        '>': '&gt;',
+        '&': '&amp;',
+        "'": '&apos;',
+        '"': '&quot;'
+    }[c]));
 }
+
+const a = parseFloat(getParam("a")) || 0;
+const b = parseFloat(getParam("b")) || 0;
+const sum = a + b;
 
 const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <response>
-    <message>${escapeXML(msg)}</message>
+    <a>${a}</a>
+    <b>${b}</b>
+    <sum>${sum}</sum>
 </response>`;
+window.parent.postMessage({
+    type: "adder-api",
+    payload: xml
+}, "*");
 
-// 创建真正的 XML Blob
-const blob = new Blob([xml], { type: "application/xml" });
-const url = URL.createObjectURL(blob);
-
-// 打开新标签页
-window.open(url);
 </script>
 
 </body>
