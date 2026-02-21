@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>扑克牌查询</title>
+
+<style>
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    background: #111;
+    color: white;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+/* 上方显示区域 */
+.top {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+#numberDisplay {
+    font-size: 40px;
+    color: white;
+    margin-bottom: 20px;
+}
+
+#cardDisplay {
+    font-size: 90px;
+}
+
+/* 键盘 */
+.keyboard {
+    background: #222;
+    padding: 15px;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+}
+
+.keyboard button {
+    height: 70px;
+    font-size: 22px;
+    border-radius: 12px;
+    border: none;
+    background: #333;
+    color: white;
+    transition: 0.1s;
+}
+
+.keyboard button:active {
+    background: #666;
+    transform: scale(0.95);
+}
+</style>
+</head>
+
+<body>
+
+<div class="top">
+    <div id="numberDisplay"></div>
+    <div id="cardDisplay"></div>
+</div>
+
+<div class="keyboard">
+    <div class="grid">
+        <button onclick="addNumber(1)">1</button>
+        <button onclick="addNumber(2)">2</button>
+        <button onclick="addNumber(3)">3</button>
+        <button onclick="addNumber(4)">4</button>
+        <button onclick="addNumber(5)">5</button>
+        <button onclick="addNumber(6)">6</button>
+        <button onclick="addNumber(7)">7</button>
+        <button onclick="addNumber(8)">8</button>
+        <button onclick="addNumber(9)">9</button>
+        <button onclick="clearInput()">清除</button>
+        <button onclick="addNumber(0)">0</button>
+        <button onclick="searchCard()">确定</button>
+    </div>
+</div>
+
+<script>
+let currentInput = "";
+
+function addNumber(num) {
+
+    if (currentInput.length >= 2) return;
+
+    if (currentInput.length === 0 && num === 0) return;
+
+    currentInput += num;
+    document.getElementById("numberDisplay").innerText = currentInput;
+}
+
+function clearInput() {
+    currentInput = "";
+    document.getElementById("numberDisplay").innerText = "";
+    document.getElementById("cardDisplay").innerText = "";
+}
+
+function searchCard() {
+    let value = parseInt(currentInput);
+
+    if (isNaN(value) || value < 1 || value > 55) {
+        alert("请输入 1 到 55");
+        return;
+    }
+
+    fetch("data.json")
+        .then(res => res.json())
+        .then(data => {
+            let card = data[value];
+            document.getElementById("cardDisplay").innerHTML = card ? card : "未定义";
+        })
+        .catch(() => {
+            alert("读取 data.json 失败");
+        });
+}
+</script>
+
+</body>
+</html>
