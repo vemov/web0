@@ -2,110 +2,72 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>FFmpeg WASM M4A 歌词写入器</title>
+    <title>GitHub Pages FFmpeg WASM</title>
+    <script src="coi-serviceworker.min.js"></script>
+    
     <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/umd/index.min.js"></script>
     <style>
-        body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f4f7f6; display: flex; justify-content: center; padding: 40px; }
-        .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); width: 100%; max-width: 500px; }
-        h3 { margin-top: 0; color: #333; }
-        .input-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 5px; font-weight: bold; font-size: 0.9em; }
-        input[type="file"], textarea { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid #ddd; border-radius: 6px; }
-        textarea { height: 100px; font-family: monospace; font-size: 12px; }
-        button { width: 100%; padding: 12px; background: #007aff; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
-        button:disabled { background: #ccc; cursor: not-allowed; }
-        #status { margin-top: 15px; font-size: 0.85em; color: #666; white-space: pre-wrap; background: #eee; padding: 10px; border-radius: 4px; max-height: 150px; overflow-y: auto; }
+        body { font-family: sans-serif; padding: 20px; background: #f0f0f0; }
+        .container { background: white; padding: 20px; border-radius: 8px; max-width: 500px; margin: auto; }
+        #log { background: #000; color: #0f0; padding: 10px; height: 150px; overflow-y: auto; font-size: 12px; margin-top: 10px; }
+        button:disabled { opacity: 0.5; }
     </style>
 </head>
 <body>
-
-<div class="card">
-    <h3>M4A 歌词封装器 (WASM)</h3>
-    
-    <div class="input-group">
-        <label>1. 选择 M4A 音频</label>
-        <input type="file" id="audio-in" accept=".m4a,.mp3">
+    <div class="container">
+        <h3>FFmpeg M4A 歌词写入 (GitHub版)</h3>
+        <input type="file" id="audio-in" accept=".m4a,.mp3"><br><br>
+        <textarea id="lrc-text" style="width:100%;height:100px" placeholder="在此粘贴LRC歌词..."></textarea><br><br>
+        <button id="run-btn" disabled>正在载入 WASM...</button>
+        <div id="log">正在初始化...</div>
     </div>
 
-    <div class="input-group">
-        <label>2. 编辑歌词 (LRC 格式)</label>
-        <textarea id="lrc-text" placeholder="[00:01.00]第一句歌词..."></textarea>
-    </div>
+    <script>
+        const { FFmpeg } = FFmpegWASM;
+        const { fetchFile, toBlobURL } = FFmpegUtil;
+        let ffmpeg = new FFmpeg();
 
-    <button id="exec-btn" disabled>正在初始化组件...</button>
-    
-    <div id="status">准备就绪。请确保浏览器已开启 COOP/COEP 隔离。</div>
-</div>
+        async function init() {
+            const logDiv = document.getElementById('log');
+            ffmpeg.on('log', ({ message }) => {
+                logDiv.innerText += "\n" + message;
+                logDiv.scrollTop = logDiv.scrollHeight;
+            });
 
-<script>
-    const { FFmpeg } = FFmpegWASM;
-    const { fetchFile, toBlobURL } = FFmpegUtil;
-    
-    let ffmpeg = null;
-    const btn = document.getElementById('exec-btn');
-    const status = document.getElementById('status');
-
-    const log = (m) => { status.innerText += `\n${m}`; status.scrollTop = status.scrollHeight; };
-
-    // 初始化 FFmpeg
-    async function init() {
-        try {
-            ffmpeg = new FFmpeg();
-            ffmpeg.on('log', ({ message }) => log(message));
-
-            // 指定核心文件的 URL (这是目前最稳妥的 UMD 加载方式)
             const baseURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd';
             await ffmpeg.load({
                 coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
                 wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
             });
-
-            btn.innerText = "开始封装并下载";
-            btn.disabled = false;
-        } catch (e) {
-            log("初始化失败: " + e.message);
-            log("提示：请检查是否在本地服务器运行，并开启了 Cross-Origin 隔离。");
+            
+            document.getElementById('run-btn').innerText = "开始处理";
+            document.getElementById('run-btn').disabled = false;
+            logDiv.innerText += "\nFFmpeg 已就绪！";
         }
-    }
 
-    btn.onclick = async () => {
-        const audioFile = document.getElementById('audio-in').files[0];
-        const lrcContent = document.getElementById('lrc-text').value;
+        document.getElementById('run-btn').onclick = async () => {
+            const audioFile = document.getElementById('audio-in').files[0];
+            const lrc = document.getElementById('lrc-text').value;
+            if(!audioFile) return alert("请选文件");
 
-        if (!audioFile) return alert("请选择音频文件");
+            document.getElementById('run-btn').disabled = true;
+            
+            await ffmpeg.writeFile('input', await fetchFile(audioFile));
+            // 写入歌词到 metadata
+            await ffmpeg.exec(['-i', 'input', '-metadata', `lyrics=${lrc}`, '-c', 'copy', 'output.m4a']);
+            
+            const data = await ffmpeg.readFile('output.m4a');
+            const url = URL.createObjectURL(new Blob([data.buffer], {type: 'audio/mp4'}));
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = "output_" + audioFile.name;
+            a.click();
+            
+            document.getElementById('run-btn').disabled = false;
+        };
 
-        btn.disabled = true;
-        btn.innerText = "处理中...";
-
-        // 1. 写入虚拟文件系统
-        const inName = 'input' + (audioFile.name.endsWith('.m4a') ? '.m4a' : '.mp3');
-        await ffmpeg.writeFile(inName, await fetchFile(audioFile));
-
-        // 2. 执行命令 (针对 M4A 的 metadata 写入)
-        // 使用 -metadata lyrics 写入歌词，-c copy 保持原质
-        await ffmpeg.exec([
-            '-i', inName,
-            '-metadata', `lyrics=${lrcContent}`,
-            '-c', 'copy',
-            'output.m4a'
-        ]);
-
-        // 3. 读取结果并下载
-        const data = await ffmpeg.readFile('output.m4a');
-        const url = URL.createObjectURL(new Blob([data.buffer], { type: 'audio/mp4' }));
-        
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = "edited_" + audioFile.name;
-        a.click();
-
-        btn.disabled = false;
-        btn.innerText = "处理完成，再次开始";
-    };
-
-    init();
-</script>
-
+        init();
+    </script>
 </body>
 </html>
