@@ -2,72 +2,139 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>GitHub Pages FFmpeg WASM</title>
+    <title>FFmpeg M4A 歌词封装 (全兼容版)</title>
     <script src="coi-serviceworker.min.js"></script>
-    
+
     <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/umd/index.min.js"></script>
+
     <style>
-        body { font-family: sans-serif; padding: 20px; background: #f0f0f0; }
-        .container { background: white; padding: 20px; border-radius: 8px; max-width: 500px; margin: auto; }
-        #log { background: #000; color: #0f0; padding: 10px; height: 150px; overflow-y: auto; font-size: 12px; margin-top: 10px; }
-        button:disabled { opacity: 0.5; }
+        body { font-family: -apple-system, sans-serif; background: #f5f5f7; display: flex; justify-content: center; padding: 20px; }
+        .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.1); width: 100%; max-width: 450px; }
+        h2 { margin-top: 0; font-size: 1.4em; text-align: center; color: #1d1d1f; }
+        .box { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; font-weight: 600; color: #86868b; font-size: 0.9em; }
+        input[type="file"], textarea { width: 100%; border: 1px solid #d2d2d7; border-radius: 8px; padding: 10px; box-sizing: border-box; }
+        textarea { height: 120px; font-family: monospace; font-size: 12px; resize: none; }
+        button { width: 100%; padding: 14px; border: none; border-radius: 8px; background: #0071e3; color: white; font-weight: 600; cursor: pointer; transition: 0.2s; }
+        button:disabled { background: #bae0ff; cursor: not-allowed; }
+        #log { margin-top: 15px; font-size: 11px; background: #fbfbfd; border: 1px solid #d2d2d7; padding: 10px; border-radius: 6px; height: 120px; overflow-y: auto; color: #48484a; white-space: pre-wrap; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h3>FFmpeg M4A 歌词写入 (GitHub版)</h3>
-        <input type="file" id="audio-in" accept=".m4a,.mp3"><br><br>
-        <textarea id="lrc-text" style="width:100%;height:100px" placeholder="在此粘贴LRC歌词..."></textarea><br><br>
-        <button id="run-btn" disabled>正在载入 WASM...</button>
-        <div id="log">正在初始化...</div>
+
+<div class="card">
+    <h2>M4A 歌词封装器</h2>
+    
+    <div class="box">
+        <label>1. 选择 M4A 音频</label>
+        <input type="file" id="audio-file" accept=".m4a">
     </div>
 
-    <script>
-        const { FFmpeg } = FFmpegWASM;
-        const { fetchFile, toBlobURL } = FFmpegUtil;
-        let ffmpeg = new FFmpeg();
+    <div class="box">
+        <label>2. 编辑滚动歌词 (LRC)</label>
+        <textarea id="lrc-content" placeholder="[00:01.00]第一句歌词..."></textarea>
+    </div>
 
-        async function init() {
-            const logDiv = document.getElementById('log');
-            ffmpeg.on('log', ({ message }) => {
-                logDiv.innerText += "\n" + message;
-                logDiv.scrollTop = logDiv.scrollHeight;
-            });
+    <button id="btn-run" disabled>正在初始化 (约30MB)...</button>
+    
+    <div id="log">正在检查跨源隔离环境...</div>
+</div>
 
-            const baseURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd';
+<script>
+    const { FFmpeg } = FFmpegWASM;
+    const { fetchFile, toBlobURL } = FFmpegUtil;
+
+    let ffmpeg = null;
+    const btn = document.getElementById('btn-run');
+    const logBox = document.getElementById('log');
+
+    const print = (m) => { 
+        console.log(m);
+        logBox.innerText += `\n> ${m}`; 
+        logBox.scrollTop = logBox.scrollHeight; 
+    };
+
+    async function loadFFmpeg() {
+        try {
+            // 检查跨源隔离状态
+            if (!window.crossOriginIsolated) {
+                print("⚠️ 警告：未检测到跨源隔离。正在等待 Service Worker 刷新页面...");
+            }
+
+            ffmpeg = new FFmpeg();
+            ffmpeg.on('log', ({ message }) => print(message));
+
+            const CORE_VERSION = '0.12.6';
+            const FFMPEG_VERSION = '0.12.10';
+            const baseURL = `https://cdn.jsdelivr.net/npm/@ffmpeg/core@${CORE_VERSION}/dist/umd`;
+            const mainURL = `https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@${FFMPEG_VERSION}/dist/umd`;
+
+            print("正在通过 Blob 代理加载核心组件...");
+
+            // 核心修复：通过 toBlobURL 代理所有可能产生跨域 Worker 的脚本
             await ffmpeg.load({
                 coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
                 wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+                // 显式修复 814.ffmpeg.js 报错问题
+                classWorkerURL: await toBlobURL(`${mainURL}/814.ffmpeg.js`, 'text/javascript'),
             });
-            
-            document.getElementById('run-btn').innerText = "开始处理";
-            document.getElementById('run-btn').disabled = false;
-            logDiv.innerText += "\nFFmpeg 已就绪！";
+
+            btn.innerText = "开始封装并下载";
+            btn.disabled = false;
+            print("✅ 环境初始化成功！可以开始处理。");
+        } catch (e) {
+            print("❌ 加载失败: " + e.message);
+            print("尝试方案：请确保 coi-serviceworker.min.js 已放置在同级目录并刷新。");
         }
+    }
 
-        document.getElementById('run-btn').onclick = async () => {
-            const audioFile = document.getElementById('audio-in').files[0];
-            const lrc = document.getElementById('lrc-text').value;
-            if(!audioFile) return alert("请选文件");
+    btn.onclick = async () => {
+        const fileIn = document.getElementById('audio-file').files[0];
+        const lyrics = document.getElementById('lrc-content').value;
 
-            document.getElementById('run-btn').disabled = true;
+        if (!fileIn) return alert("请先上传音频文件");
+
+        btn.disabled = true;
+        btn.innerText = "正在处理...";
+
+        const inputName = 'input.m4a';
+        const outputName = 'output.m4a';
+
+        try {
+            print("正在读取文件到内存...");
+            await ffmpeg.writeFile(inputName, await fetchFile(fileIn));
+
+            print("正在执行 FFmpeg 封装命令...");
+            // -metadata lyrics 是 M4A 存储带时间戳歌词的标准方式
+            await ffmpeg.exec([
+                '-i', inputName,
+                '-metadata', `lyrics=${lyrics}`,
+                '-c', 'copy',
+                outputName
+            ]);
+
+            print("生成成功，准备下载...");
+            const data = await ffmpeg.readFile(outputName);
+            const blob = new Blob([data.buffer], { type: 'audio/mp4' });
+            const url = URL.createObjectURL(blob);
             
-            await ffmpeg.writeFile('input', await fetchFile(audioFile));
-            // 写入歌词到 metadata
-            await ffmpeg.exec(['-i', 'input', '-metadata', `lyrics=${lrc}`, '-c', 'copy', 'output.m4a']);
-            
-            const data = await ffmpeg.readFile('output.m4a');
-            const url = URL.createObjectURL(new Blob([data.buffer], {type: 'audio/mp4'}));
             const a = document.createElement('a');
             a.href = url;
-            a.download = "output_" + audioFile.name;
+            a.download = `Lyrics_${fileIn.name}`;
             a.click();
             
-            document.getElementById('run-btn').disabled = false;
-        };
+            print("✨ 下载已启动。");
+        } catch (err) {
+            print("❌ 处理过程出错: " + err.message);
+        } finally {
+            btn.disabled = false;
+            btn.innerText = "处理完成，再次开始";
+        }
+    };
 
-        init();
-    </script>
+    loadFFmpeg();
+</script>
+
 </body>
 </html>
