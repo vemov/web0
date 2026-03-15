@@ -14,6 +14,22 @@ body {
 </style>
 </head>
 <body>
+  <script>
+(function() {
+    const ua = navigator.userAgent.toLowerCase();
+    const isEdge = ua.indexOf('edg/') > -1;
+    const isChrome = ua.indexOf('chrome') > -1 && ua.indexOf('chromium') === -1 && !isEdge;
+    const isMobile = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(ua);
+    if (!((isChrome || isEdge) && !isMobile)) {
+        document.body.innerHTML = `
+            <div style="text-align:center; margin-top:100px; font-family: sans-serif;">
+                <p>请使用 <strong>PC 版本的 Edge 或 Chrome</strong> 浏览器打开此页面。</p>
+            </div>
+        `;
+        window.stop(); 
+    }
+})();
+</script>
 <script>
 let running = true;
 let i = 0;
@@ -32,5 +48,6 @@ function stop() {
   running = false;
 }
 </script>
+  
 </body>
 </html>
