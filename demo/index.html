@@ -27,30 +27,20 @@
     </style>
 </head>
 <body>
-
     <div id="status-message">正在检测环境...</div>
-
     <script>
         (function() {
             const statusBox = document.getElementById('status-message');
             const targetModel = "girl-1.usdz";
-
-            // 1. 设备与浏览器特征检测
             const ua = window.navigator.userAgent;
             const isIPhone = /iPhone/i.test(ua);
-            // 排除 Chrome, Firefox, Focus 等第三方 iOS 浏览器，确保是原生 WebKit/Safari
             const isSafari = isIPhone && /Safari/i.test(ua) && !/CriOS/i.test(ua) && !/FxiOS/i.test(ua);
-            
-            // 2. AR Quick Look 能力检测 (iOS 12.2+ 核心判定)
             const tempAnchor = document.createElement('a');
             const supportsAR = tempAnchor.relList && tempAnchor.relList.supports && tempAnchor.relList.supports('ar');
-
             if (isIPhone && supportsAR) {
-                // 环境符合：直接执行跳转
                 statusBox.innerHTML = "正在启动 AR 体验...";
                 window.location.replace(targetModel);
             } else {
-                // 环境不符合：显示专业提示
                 statusBox.innerHTML = `
                     <div class="error-icon">ios</div>
                     <h2 style="margin: 10px 0;">需要 iPhone Safari</h2>
