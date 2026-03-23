@@ -1,37 +1,111 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta property="og:video" content="https://media.tenor.com/RKjtInCyE6sAAAPo/meow-cat.mp4">
-    <meta property="og:video:secure_url" content="https://media.tenor.com/RKjtInCyE6sAAAPo/meow-cat.mp4">
-    
-    <meta property="og:video:type" content="video/mp4">
-    <meta property="og:video:width" content="1280">
-    <meta property="og:video:height" content="720">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>赛博展厅 2026</title>
 
-    <meta property="og:type" content="video.other">
-<title>web0</title>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Event",
+      "name": "未来科技展",
+      "startDate": "2026-05-20T19:00",
+      "location": {
+        "@type": "Place",
+        "name": "数字艺术馆"
+      },
+      "potentialAction": {
+        "@type": "BuyAction",
+        "name": "购票",
+        "target": "https://example.com/buy-ticket"
+      }
+    }
+    </script>
 
-<style>
-html, body {
-    margin: 0;
-    padding: 0;
-    height: 100%;
-    background: #111;
-}
-
-iframe {
-    width: 100%;
-    height: 100%;
-    border: none;
-}
-</style>
+    <style>
+        /* 模拟 Siri 对话浮窗的样式 */
+        .siri-dialog {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 90%;
+            max-width: 400px;
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(20px); /* 苹果标志性的磨砂效果 */
+            border-radius: 24px;
+            padding: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            display: none; /* 初始隐藏 */
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto;
+        }
+        .siri-wave {
+            height: 40px;
+            background: linear-gradient(90deg, #4285f4, #9b72cb, #d96a70, #ee8133, #4285f4);
+            background-size: 200%;
+            animation: wave 2s linear infinite;
+            -webkit-mask-image: url('data:image/svg+xml;utf8,<svg ...></svg>'); /* 模拟波形 */
+        }
+    </style>
 </head>
-
 <body>
 
-<iframe src="https://cute-donkey-29.2024-10-24.deno.net/"></iframe>
+    <main>
+        <h1>未来科技展 - 门票预订</h1>
+        <p>当前票价：¥199</p>
+        <button onclick="simulateSiriInteraction()">手动测试 Siri 意图</button>
+    </main>
 
+    <div id="siri-box" class="siri-dialog">
+        <div style="display: flex; align-items: center; margin-bottom: 10px;">
+            <div style="width: 30px; height: 30px; background: conic-gradient(from 0deg, #00ffcc, #0066ff, #ff00ff, #ff3300, #00ffcc); border-radius: 50%;"></div>
+            <strong style="margin-left: 10px;">Siri</strong>
+        </div>
+        <p id="siri-text">正在识别页面操作...</p>
+        <div id="siri-actions" style="display: flex; gap: 10px; margin-top: 15px;"></div>
+    </div>
+
+    <script>
+        // 模拟 Apple Intelligence 的 Intent 捐赠与反馈
+        async function simulateSiriInteraction() {
+            const box = document.getElementById('siri-box');
+            const text = document.getElementById('siri-text');
+            const actions = document.getElementById('siri-actions');
+
+            box.style.display = 'block';
+            
+            // 第一步：Siri 提取 DOM 语义
+            text.innerText = "你想购买“未来科技展”的门票吗？";
+            
+            // 模拟 1 秒后的动作识别
+            setTimeout(() => {
+                actions.innerHTML = `
+                    <button onclick="confirmOrder()" style="flex:1; padding:10px; border-radius:12px; border:none; background:#007AFF; color:white;">确认购买</button>
+                    <button onclick="closeSiri()" style="flex:1; padding:10px; border-radius:12px; border:1px solid #ccc; background:none;">取消</button>
+                `;
+            }, 800);
+        }
+
+        function confirmOrder() {
+            // 真正的意图上报 API (假定 API)
+            if (window.apple && window.apple.intents) {
+                window.apple.intents.perform("BuyAction", { item: "FutureTech2026" })
+                    .then(res => {
+                        document.getElementById('siri-text').innerText = "完成！已为你订好门票。";
+                        document.getElementById('siri-actions').innerHTML = "";
+                    });
+            } else {
+                // 演示模式
+                document.getElementById('siri-text').innerText = "完成！已通过 Apple Pay 支付 ¥199。";
+                document.getElementById('siri-actions').innerHTML = "";
+                setTimeout(closeSiri, 2000);
+            }
+        }
+
+        function closeSiri() {
+            document.getElementById('siri-box').style.display = 'none';
+        }
+    </script>
 </body>
 </html>
