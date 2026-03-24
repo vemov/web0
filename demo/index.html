@@ -3,13 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>High-Fidelity GLTF Space</title>
+    <title>高保真 GLTF 空间</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: -apple-system, sans-serif; }
         #hud { position: absolute; top: 20px; left: 20px; color: #0f0; font-family: monospace; font-size: 10px; pointer-events: none; background: rgba(0,0,0,0.8); padding: 12px; border-radius: 8px; border: 1px solid #333; z-index: 10; }
         #force-overlay { position: absolute; inset: 0; background: #000; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; color: white; text-align: center; }
         #btn-confirm { padding: 20px 60px; background: #ffffff; color: #000; border: none; border-radius: 2px; cursor: pointer; font-weight: bold; letter-spacing: 2px; margin-bottom: 20px; }
-        
         #progress-container { width: 200px; height: 2px; background: #222; border-radius: 2px; display: none; overflow: hidden; position: relative; }
         #progress-bar { width: 0%; height: 100%; background: #007aff; transition: width 0.3s; }
         #progress-text { margin-top: 10px; font-size: 11px; color: #666; font-family: monospace; }
@@ -18,14 +17,14 @@
 <body>
 
 <div id="force-overlay">
-    <button id="btn-confirm">ENTER SPACE</button>
+    <button id="btn-confirm">进入空间</button>
     <div id="progress-container">
         <div id="progress-bar"></div>
     </div>
-    <div id="progress-text">READY TO INITIALIZE</div>
+    <div id="progress-text">准备初始化</div>
 </div>
 
-<div id="hud">SYSTEM: STANDBY</div>
+<div id="hud">系统状态: 待机</div>
 
 <script type="module">
     import * as THREE from 'https://cdn.skypack.dev/three@0.128.0';
@@ -85,11 +84,11 @@
                 if (xhr.lengthComputable) {
                     const percent = (xhr.loaded / xhr.total * 100);
                     pBar.style.width = percent + '%';
-                    pText.innerText = `LOADING ASSETS: ${Math.round(percent)}%`;
+                    pText.innerText = `正在加载资源: ${Math.round(percent)}%`;
                 }
             },
             (error) => {
-                pText.innerText = 'RESOURCE ERROR';
+                pText.innerText = '资源加载错误';
                 console.error(error);
             }
         );
@@ -100,7 +99,7 @@
         if (isRunning) {
             controls.update();
             const { x, y, z } = camera.rotation;
-            document.getElementById('hud').innerText = `CAM_Y: ${camera.position.y}\nROT_X: ${x.toFixed(3)}\nROT_Y: ${y.toFixed(3)}`;
+            document.getElementById('hud').innerText = `高度: ${camera.position.y}\n垂直旋转: ${x.toFixed(3)}\n水平旋转: ${y.toFixed(3)}`;
             renderer.render(scene, camera);
         }
     }
@@ -109,12 +108,12 @@
         try {
             if (typeof DeviceOrientationEvent.requestPermission === 'function') {
                 const res = await DeviceOrientationEvent.requestPermission();
-                if (res !== 'granted') return alert("Permission denied.");
+                if (res !== 'granted') return alert("权限请求被拒绝。");
             }
             document.getElementById('btn-confirm').style.display = 'none';
             initScene();
         } catch (e) {
-            alert("Please use HTTPS and a mobile device.");
+            alert("请确保使用 HTTPS 协议并在移动设备上访问。");
         }
     };
 
