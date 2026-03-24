@@ -3,44 +3,41 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Hybrid Control Space</title>
+    <title>Precision Kinematics</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: -apple-system, sans-serif; }
         #overlay { position: absolute; width: 100%; height: 100%; background: rgba(0,0,0,0.9); color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; text-align: center; }
-        #btn-start { padding: 20px 60px; font-size: 18px; background: #007aff; color: white; border: none; border-radius: 40px; cursor: pointer; font-weight: bold; }
-        #hud { position: absolute; top: 20px; left: 20px; color: #0f0; font-family: monospace; font-size: 11px; pointer-events: none; background: rgba(0,0,0,0.7); padding: 12px; border-radius: 8px; border: 1px solid #333; }
-        
-        /* 前进按钮样式 */
+        #btn-start { padding: 18px 50px; font-size: 16px; background: #007aff; color: white; border: none; border-radius: 30px; cursor: pointer; font-weight: bold; }
+        #hud { position: absolute; top: 20px; left: 20px; color: #0f0; font-family: monospace; font-size: 10px; pointer-events: none; background: rgba(0,0,0,0.7); padding: 10px; border-radius: 5px; border: 1px solid #333; z-index: 10; }
         #move-ctrl { 
             position: absolute; 
-            bottom: 50px; 
+            bottom: 40px; 
             left: 50%; 
             transform: translateX(-50%); 
-            width: 80px; 
-            height: 80px; 
-            background: rgba(255,255,255,0.15); 
-            border: 2px solid rgba(255,255,255,0.3);
+            width: 70px; 
+            height: 70px; 
+            background: rgba(255,255,255,0.1); 
+            border: 1px solid rgba(255,255,255,0.3);
             border-radius: 50%; 
             display: none; 
             justify-content: center; 
             align-items: center;
             touch-action: none;
-            -webkit-user-select: none;
             z-index: 50;
         }
-        #move-ctrl:active { background: rgba(0,122,255,0.4); border-color: #007aff; scale: 0.95; }
-        #move-ctrl::after { content: "▲"; color: white; font-size: 24px; }
+        #move-ctrl:active { background: rgba(0,122,255,0.3); border-color: #007aff; }
+        #move-ctrl::after { content: "MOVE"; color: white; font-size: 10px; font-weight: bold; }
     </style>
 </head>
 <body>
 
 <div id="overlay">
-    <h2>混合动力空间</h2>
-    <p>倾斜手机旋转视角<br>长按下方按钮前进</p>
-    <button id="btn-start">启动系统</button>
+    <h2>精密运动控制系统</h2>
+    <p>低速巡航模式 | 实时碰撞检测</p>
+    <button id="btn-start">初始化</button>
 </div>
 
-<div id="hud">STATUS: STANDBY</div>
+<div id="hud">COLLISION: OFF</div>
 <div id="move-ctrl"></div>
 
 <script type="module">
@@ -51,18 +48,21 @@
     let isRunning = false;
     let isMoving = false;
     let clock = new THREE.Clock();
+    let obstacles = [];
     
     const physics = {
         vel: new THREE.Vector3(),
-        speed: 8.0,      // 移动速度
-        friction: 0.92,  // 惯性滑动阻力
+        maxSpeed: 0.05, 
+        accel: 0.15,
+        friction: 0.85,
+        radius: 0.6,
         height: 1.7
     };
 
     function init() {
         scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x0a0a0a);
-        scene.fog = new THREE.Fog(0x0a0a0a, 20, 70);
+        scene.background = new THREE.Color(0x020202);
+        scene.fog = new THREE.Fog(0x020202, 5, 40);
 
         camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         
@@ -71,32 +71,48 @@
         renderer.setPixelRatio(window.devicePixelRatio);
         document.body.appendChild(renderer.domElement);
 
-        const grid = new THREE.GridHelper(200, 60, 0x444444, 0x222222);
+        const grid = new THREE.GridHelper(100, 50, 0x222222, 0x111111);
         scene.add(grid);
 
-        const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+        const ambient = new THREE.AmbientLight(0xffffff, 0.4);
         scene.add(ambient);
 
-        const sun = new THREE.PointLight(0x007aff, 1, 100);
-        sun.position.set(0, 10, 0);
-        scene.add(sun);
+        const light = new THREE.PointLight(0x007aff, 2, 20);
+        light.position.set(0, 5, 0);
+        scene.add(light);
 
-        for(let i=0; i<30; i++) {
-            const h = Math.random() * 8 + 1;
-            const box = new THREE.Mesh(
-                new THREE.BoxGeometry(2, h, 2),
-                new THREE.MeshStandardMaterial({ color: 0x333333 })
+        const boxGeo = new THREE.BoxGeometry(2, 4, 2);
+        const boxMat = new THREE.MeshStandardMaterial({ color: 0x444444 });
+        for(let i=0; i<40; i++) {
+            const box = new THREE.Mesh(boxGeo, boxMat);
+            box.position.set(
+                (Math.random() - 0.5) * 40,
+                2,
+                (Math.random() - 0.5) * 40
             );
-            box.position.set(Math.random()*100-50, h/2, Math.random()*100-50);
             scene.add(box);
+            obstacles.push(box);
         }
 
         player = new THREE.Group();
-        player.position.set(0, physics.height, 0);
+        player.position.set(0, physics.height, 5);
         player.add(camera);
         scene.add(player);
 
         controls = new DeviceOrientationControls(camera);
+    }
+
+    function checkCollision(newPos) {
+        for (let obj of obstacles) {
+            const dx = newPos.x - obj.position.x;
+            const dz = newPos.z - obj.position.z;
+            const distance = Math.sqrt(dx * dx + dz * dz);
+            
+            if (distance < physics.radius + 1.0) {
+                return true;
+            }
+        }
+        return false;
     }
 
     function update() {
@@ -106,23 +122,29 @@
         controls.update();
 
         if (isMoving) {
-            // 获取相机朝向的世界方向
             const dir = new THREE.Vector3(0, 0, -1);
             dir.applyQuaternion(camera.quaternion);
-            dir.y = 0; // 锁定水平移动
+            dir.y = 0;
             dir.normalize();
-            
-            // 动力加速
-            physics.vel.addScaledVector(dir, physics.speed * dt);
+            physics.vel.addScaledVector(dir, physics.accel * dt);
         }
 
-        // 应用阻力（物理惯性）
         physics.vel.multiplyScalar(physics.friction);
+        if (physics.vel.length() > physics.maxSpeed) {
+            physics.vel.setLength(physics.maxSpeed);
+        }
 
-        // 更新位置
-        player.position.add(physics.vel);
-
-        document.getElementById('hud').innerText = `POS: X:${player.position.x.toFixed(2)} Z:${player.position.z.toFixed(2)}\nVEL: ${physics.vel.length().toFixed(3)}`;
+        const nextPos = player.position.clone().add(physics.vel);
+        
+        if (!checkCollision(nextPos)) {
+            player.position.copy(nextPos);
+            document.getElementById('hud').style.color = "#0f0";
+            document.getElementById('hud').innerText = `STATUS: CLEAR\nSPD: ${physics.vel.length().toFixed(3)} m/s`;
+        } else {
+            physics.vel.set(0, 0, 0);
+            document.getElementById('hud').style.color = "#f00";
+            document.getElementById('hud').innerText = `STATUS: COLLISION\nSPD: 0.000 m/s`;
+        }
     }
 
     function animate() {
@@ -132,8 +154,6 @@
     }
 
     const moveBtn = document.getElementById('move-ctrl');
-    
-    // 触摸事件处理
     moveBtn.addEventListener('touchstart', (e) => { e.preventDefault(); isMoving = true; });
     moveBtn.addEventListener('touchend', () => { isMoving = false; });
     moveBtn.addEventListener('mousedown', () => { isMoving = true; });
