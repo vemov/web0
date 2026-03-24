@@ -2,110 +2,140 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>赛博展厅 2026</title>
-
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "Event",
-      "name": "未来科技展",
-      "startDate": "2026-05-20T19:00",
-      "location": {
-        "@type": "Place",
-        "name": "数字艺术馆"
-      },
-      "potentialAction": {
-        "@type": "BuyAction",
-        "name": "购票",
-        "target": "https://example.com/buy-ticket"
-      }
-    }
-    </script>
-
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>陀螺仪小球控制演示</title>
     <style>
-        /* 模拟 Siri 对话浮窗的样式 */
-        .siri-dialog {
-            position: fixed;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 90%;
-            max-width: 400px;
-            background: rgba(255, 255, 255, 0.85);
-            backdrop-filter: blur(20px); /* 苹果标志性的磨砂效果 */
-            border-radius: 24px;
-            padding: 20px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-            display: none; /* 初始隐藏 */
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto;
+        body {
+            margin: 0;
+            overflow: hidden;
+            touch-action: none;
+            background-color: #f0f2f5;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         }
-        .siri-wave {
-            height: 40px;
-            background: linear-gradient(90deg, #4285f4, #9b72cb, #d96a70, #ee8133, #4285f4);
-            background-size: 200%;
-            animation: wave 2s linear infinite;
-            -webkit-mask-image: url('data:image/svg+xml;utf8,<svg ...></svg>'); /* 模拟波形 */
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        #ball {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            background: radial-gradient(circle at 30% 30%, #4facfe, #00f2fe);
+            border-radius: 50%;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            will-change: left, top;
+        }
+        #info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.8);
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 12px;
+            pointer-events: none;
+        }
+        #btn-permission {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 15px 30px;
+            font-size: 18px;
+            background-color: #007aff;
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            z-index: 100;
         }
     </style>
 </head>
 <body>
 
-    <main>
-        <h1>未来科技展 - 门票预订</h1>
-        <p>当前票价：¥199</p>
-        <button onclick="simulateSiriInteraction()">手动测试 Siri 意图</button>
-    </main>
+<div id="container">
+    <div id="info">倾斜手机以移动小球</div>
+    <div id="ball"></div>
+    <button id="btn-permission">开始运行</button>
+</div>
 
-    <div id="siri-box" class="siri-dialog">
-        <div style="display: flex; align-items: center; margin-bottom: 10px;">
-            <div style="width: 30px; height: 30px; background: conic-gradient(from 0deg, #00ffcc, #0066ff, #ff00ff, #ff3300, #00ffcc); border-radius: 50%;"></div>
-            <strong style="margin-left: 10px;">Siri</strong>
-        </div>
-        <p id="siri-text">正在识别页面操作...</p>
-        <div id="siri-actions" style="display: flex; gap: 10px; margin-top: 15px;"></div>
-    </div>
+<script>
+    const ball = document.getElementById('ball');
+    const btn = document.getElementById('btn-permission');
+    const info = document.getElementById('info');
 
-    <script>
-        // 模拟 Apple Intelligence 的 Intent 捐赠与反馈
-        async function simulateSiriInteraction() {
-            const box = document.getElementById('siri-box');
-            const text = document.getElementById('siri-text');
-            const actions = document.getElementById('siri-actions');
+    // 物理参数
+    let posX = window.innerWidth / 2;
+    let posY = window.innerHeight / 2;
+    let velX = 0;
+    let velY = 0;
+    const friction = 0.98; // 摩擦力
+    const sensitivity = 0.15; // 灵敏度
 
-            box.style.display = 'block';
-            
-            // 第一步：Siri 提取 DOM 语义
-            text.innerText = "你想购买“未来科技展”的门票吗？";
-            
-            // 模拟 1 秒后的动作识别
-            setTimeout(() => {
-                actions.innerHTML = `
-                    <button onclick="confirmOrder()" style="flex:1; padding:10px; border-radius:12px; border:none; background:#007AFF; color:white;">确认购买</button>
-                    <button onclick="closeSiri()" style="flex:1; padding:10px; border-radius:12px; border:1px solid #ccc; background:none;">取消</button>
-                `;
-            }, 800);
+    function handleOrientation(event) {
+        let x = event.gamma; // 左右倾斜 (-90 to 90)
+        let y = event.beta;  // 前后倾斜 (-180 to 180)
+
+        // 修正逻辑：如果用户横屏或姿态异常，可在此调整映射
+        velX += x * sensitivity;
+        velY += y * sensitivity;
+
+        updatePosition();
+        
+        info.innerHTML = `Beta: ${Math.round(y)} | Gamma: ${Math.round(x)}`;
+    }
+
+    function updatePosition() {
+        velX *= friction;
+        velY *= friction;
+
+        posX += velX;
+        posY += velY;
+
+        // 边界检测
+        const radius = 25;
+        if (posX < radius) { posX = radius; velX *= -0.5; }
+        if (posX > window.innerWidth - radius) { posX = window.innerWidth - radius; velX *= -0.5; }
+        if (posY < radius) { posY = radius; velY *= -0.5; }
+        if (posY > window.innerHeight - radius) { posY = window.innerHeight - radius; velY *= -0.5; }
+
+        ball.style.left = posX + 'px';
+        ball.style.top = posY + 'px';
+
+        requestAnimationFrame(updatePosition);
+    }
+
+    // 权限处理（针对 iOS 13+ 的安全要求）
+    btn.onclick = () => {
+        if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+            DeviceOrientationEvent.requestPermission()
+                .then(permissionState => {
+                    if (permissionState === 'granted') {
+                        init();
+                    }
+                })
+                .catch(console.error);
+        } else {
+            // 非 iOS 设备直接初始化
+            init();
         }
+    };
 
-        function confirmOrder() {
-            // 真正的意图上报 API (假定 API)
-            if (window.apple && window.apple.intents) {
-                window.apple.intents.perform("BuyAction", { item: "FutureTech2026" })
-                    .then(res => {
-                        document.getElementById('siri-text').innerText = "完成！已为你订好门票。";
-                        document.getElementById('siri-actions').innerHTML = "";
-                    });
-            } else {
-                // 演示模式
-                document.getElementById('siri-text').innerText = "完成！已通过 Apple Pay 支付 ¥199。";
-                document.getElementById('siri-actions').innerHTML = "";
-                setTimeout(closeSiri, 2000);
-            }
-        }
+    function init() {
+        btn.style.display = 'none';
+        window.addEventListener('deviceorientation', handleOrientation);
+        requestAnimationFrame(updatePosition);
+    }
 
-        function closeSiri() {
-            document.getElementById('siri-box').style.display = 'none';
-        }
-    </script>
+    // 处理窗口缩放
+    window.onresize = () => {
+        posX = window.innerWidth / 2;
+        posY = window.innerHeight / 2;
+    };
+</script>
 </body>
 </html>
