@@ -3,146 +3,121 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Professional 6-DOF Kinematics</title>
+    <title>Visual-Inertial Odometry Space</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-        #overlay { position: absolute; width: 100%; height: 100%; background: rgba(0,0,0,0.95); color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; text-align: center; padding: 20px; box-sizing: border-box; }
-        button { padding: 18px 40px; font-size: 16px; background: #007aff; color: white; border: none; border-radius: 12px; cursor: pointer; font-weight: 600; box-shadow: 0 4px 15px rgba(0,122,255,0.3); }
-        #hud { position: absolute; top: env(safe-area-inset-top, 20px); left: 20px; color: #00ff00; font-family: "SF Mono", "Roboto Mono", monospace; font-size: 10px; pointer-events: none; background: rgba(0,0,0,0.8); padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); line-height: 1.5; }
+        body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
+        #overlay { position: absolute; width: 100%; height: 100%; background: rgba(0,0,0,0.9); color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; text-align: center; }
+        button { padding: 20px 50px; font-size: 18px; background: #28a745; color: white; border: none; border-radius: 40px; cursor: pointer; }
+        #hud { position: absolute; top: 20px; left: 20px; color: #0f0; font-family: monospace; font-size: 11px; pointer-events: none; background: rgba(0,0,0,0.6); padding: 10px; border-radius: 8px; }
+        #view-debug { position: absolute; bottom: 10px; right: 10px; width: 120px; height: 90px; border: 1px solid #555; opacity: 0.5; }
     </style>
 </head>
 <body>
 
 <div id="overlay">
-    <h2 style="margin-bottom: 10px;">高精度空间动力学系统</h2>
-    <p style="opacity: 0.7; font-size: 14px; margin-bottom: 30px;">采用线性加速度滤波与死区补偿算法<br>请垂直握持设备以初始化</p>
-    <button id="btn-start">进入仿真环境</button>
+    <h2>视觉+惯性融合动力学</h2>
+    <p>将使用后置摄像头识别地面纹理偏移</p>
+    <button id="btn-start">授权并初始化</button>
 </div>
-<div id="hud">SYSTEM READY</div>
+<div id="hud">VIO STATUS: WAITING</div>
+<video id="view-debug" autoplay playsinline muted></video>
 
 <script type="module">
     import * as THREE from 'https://cdn.skypack.dev/three@0.128.0';
     import { DeviceOrientationControls } from 'https://cdn.skypack.dev/three@0.128.0/examples/jsm/controls/DeviceOrientationControls.js';
 
-    let scene, camera, renderer, controls, player;
+    let scene, camera, renderer, controls, player, video;
     let isRunning = false;
     let clock = new THREE.Clock();
+    let prevFrameData = null;
     
     const physics = {
         vel: new THREE.Vector3(),
-        acc: new THREE.Vector3(),
-        filteredAcc: new THREE.Vector3(),
-        friction: 0.88,
-        sensitivity: 4.5,
-        deadzone: 0.6,
-        maxSpeed: 3.5,
+        visBoost: 0,
+        friction: 0.85,
         height: 1.7
     };
 
-    function init() {
+    async function initCamera() {
+        video = document.getElementById('view-debug');
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { facingMode: "environment", width: 160, height: 120 } 
+        });
+        video.srcObject = stream;
+    }
+
+    function processVisualOdometry() {
+        if (!video || video.readyState !== video.HAVE_ENOUGH_DATA) return;
+
+        const canvas = document.createElement('canvas');
+        canvas.width = 40; canvas.height = 30;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const currentFrame = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+
+        if (prevFrameData) {
+            let diff = 0;
+            for (let i = 0; i < currentFrame.length; i += 4) {
+                diff += Math.abs(currentFrame[i] - prevFrameData[i]);
+            }
+            // 粗略估算：像素剧烈变化通常代表物理位移
+            physics.visBoost = Math.max(0, (diff / 100000) - 0.5);
+        }
+        prevFrameData = currentFrame;
+    }
+
+    function initScene() {
         scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x050505);
-        scene.fog = new THREE.Fog(0x050505, 15, 60);
+        scene.background = new THREE.Color(0x0a0a0a);
+        scene.fog = new THREE.Fog(0x0a0a0a, 10, 50);
 
         camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        
-        renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+        renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-        renderer.shadowMap.enabled = true;
-        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         document.body.appendChild(renderer.domElement);
 
-        const grid = new THREE.GridHelper(200, 80, 0x333333, 0x151515);
+        const grid = new THREE.GridHelper(200, 100, 0x444444, 0x222222);
         scene.add(grid);
 
-        const floor = new THREE.Mesh(
-            new THREE.PlaneGeometry(200, 200),
-            new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9, metalness: 0.1 })
-        );
-        floor.rotation.x = -Math.PI / 2;
-        floor.receiveShadow = true;
-        scene.add(floor);
-
-        const ambient = new THREE.AmbientLight(0xffffff, 0.3);
+        const ambient = new THREE.AmbientLight(0xffffff, 0.5);
         scene.add(ambient);
-
-        const sun = new THREE.DirectionalLight(0xffffff, 0.7);
-        sun.position.set(30, 50, 20);
-        sun.castShadow = true;
-        sun.shadow.camera.left = -40;
-        sun.shadow.camera.right = 40;
-        sun.shadow.camera.top = 40;
-        sun.shadow.camera.bottom = -40;
-        sun.shadow.mapSize.set(1024, 1024);
-        scene.add(sun);
-
-        for(let i=0; i<50; i++) {
-            const h = Math.random() * 6 + 0.5;
-            const box = new THREE.Mesh(
-                new THREE.BoxGeometry(1.5, h, 1.5),
-                new THREE.MeshStandardMaterial({ color: 0x252525 })
-            );
-            box.position.set(Math.random()*80-40, h/2, Math.random()*80-40);
-            box.castShadow = true;
-            box.receiveShadow = true;
-            scene.add(box);
-        }
 
         player = new THREE.Group();
         player.position.y = physics.height;
         player.add(camera);
         scene.add(player);
 
-        const proxy = new THREE.Mesh(new THREE.SphereGeometry(0.4), new THREE.MeshBasicMaterial({visible: false}));
-        proxy.castShadow = true;
-        player.add(proxy);
-
         controls = new DeviceOrientationControls(camera);
     }
 
     function handleMotion(e) {
         if (!isRunning) return;
-
-        let ax = e.acceleration?.x || 0;
-        let ay = e.acceleration?.y || 0;
-        let az = e.acceleration?.z || 0;
-
-        const currentAcc = new THREE.Vector3(ax, ay, az);
-
-        if (currentAcc.length() < physics.deadzone) {
-            currentAcc.set(0, 0, 0);
-        }
-
-        physics.filteredAcc.lerp(currentAcc, 0.15);
-
-        const worldAcc = physics.filteredAcc.clone().applyQuaternion(camera.quaternion);
-        worldAcc.y = 0; 
-
-        physics.vel.addScaledVector(worldAcc, physics.sensitivity * 0.015);
-
-        if (physics.vel.length() > physics.maxSpeed) {
-            physics.vel.setLength(physics.maxSpeed);
-        }
+        const acc = e.acceleration;
+        const worldAcc = new THREE.Vector3(acc.x, 0, acc.z).applyQuaternion(camera.quaternion);
+        worldAcc.y = 0;
+        
+        // 融合视觉：如果摄像头检测到运动，大幅增强加速度响应
+        const multiplier = 1.0 + (physics.visBoost * 5.0);
+        physics.vel.addScaledVector(worldAcc, 0.08 * multiplier);
     }
 
     function update() {
         const dt = clock.getDelta();
-        if (dt > 0.1) return;
-
         controls.update();
+        processVisualOdometry();
 
-        const drag = Math.pow(physics.friction, dt * 60);
-        physics.vel.multiplyScalar(drag);
-
-        player.position.addScaledVector(physics.vel, dt);
-
-        if (player.position.y < physics.height) {
-            player.position.y = physics.height;
-            physics.vel.y = 0;
+        physics.vel.multiplyScalar(physics.friction);
+        
+        // 注入视觉产生的恒定前向模拟（如果检测到运动）
+        if (physics.visBoost > 1.0) {
+            const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+            dir.y = 0;
+            player.position.addScaledVector(dir, physics.visBoost * 0.05);
         }
 
-        document.getElementById('hud').innerText = `VELOCITY: ${physics.vel.length().toFixed(3)} m/s\nPOSITION: X:${player.position.x.toFixed(2)} Z:${player.position.z.toFixed(2)}\nFPS: ${Math.round(1/dt)}`;
+        player.position.addScaledVector(physics.vel, dt * 5);
+        
+        document.getElementById('hud').innerText = `VISUAL_MOTION: ${physics.visBoost.toFixed(2)}\nVEL: ${physics.vel.length().toFixed(2)}`;
     }
 
     function animate() {
@@ -152,32 +127,18 @@
         renderer.render(scene, camera);
     }
 
-    window.addEventListener('resize', () => {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-    });
-
     document.getElementById('btn-start').onclick = async () => {
         try {
-            const res = await Promise.all([
-                typeof DeviceOrientationEvent.requestPermission === 'function' ? DeviceOrientationEvent.requestPermission() : 'granted',
-                typeof DeviceMotionEvent.requestPermission === 'function' ? DeviceMotionEvent.requestPermission() : 'granted'
-            ]);
-
-            if (res.every(s => s === 'granted')) {
-                document.getElementById('overlay').style.display = 'none';
-                isRunning = true;
-                init();
-                window.addEventListener('devicemotion', handleMotion, true);
-                animate();
-                if (document.documentElement.requestFullscreen) {
-                    document.documentElement.requestFullscreen().catch(() => {});
-                }
-            }
-        } catch (e) {
-            alert('传感器权限请求失败');
-        }
+            await initCamera();
+            if (typeof DeviceOrientationEvent.requestPermission === 'function') await DeviceOrientationEvent.requestPermission();
+            if (typeof DeviceMotionEvent.requestPermission === 'function') await DeviceMotionEvent.requestPermission();
+            
+            document.getElementById('overlay').style.display = 'none';
+            isRunning = true;
+            initScene();
+            window.addEventListener('devicemotion', handleMotion, true);
+            animate();
+        } catch (e) { alert("需要摄像头与传感器权限"); }
     };
 </script>
 </body>
