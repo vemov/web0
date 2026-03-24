@@ -3,142 +3,160 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Visual-Inertial Odometry Space</title>
+    <title>Hybrid Control Space</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
+        body { margin: 0; overflow: hidden; background: #000; font-family: -apple-system, sans-serif; }
         #overlay { position: absolute; width: 100%; height: 100%; background: rgba(0,0,0,0.9); color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; text-align: center; }
-        button { padding: 20px 50px; font-size: 18px; background: #28a745; color: white; border: none; border-radius: 40px; cursor: pointer; }
-        #hud { position: absolute; top: 20px; left: 20px; color: #0f0; font-family: monospace; font-size: 11px; pointer-events: none; background: rgba(0,0,0,0.6); padding: 10px; border-radius: 8px; }
-        #view-debug { position: absolute; bottom: 10px; right: 10px; width: 120px; height: 90px; border: 1px solid #555; opacity: 0.5; }
+        #btn-start { padding: 20px 60px; font-size: 18px; background: #007aff; color: white; border: none; border-radius: 40px; cursor: pointer; font-weight: bold; }
+        #hud { position: absolute; top: 20px; left: 20px; color: #0f0; font-family: monospace; font-size: 11px; pointer-events: none; background: rgba(0,0,0,0.7); padding: 12px; border-radius: 8px; border: 1px solid #333; }
+        
+        /* 前进按钮样式 */
+        #move-ctrl { 
+            position: absolute; 
+            bottom: 50px; 
+            left: 50%; 
+            transform: translateX(-50%); 
+            width: 80px; 
+            height: 80px; 
+            background: rgba(255,255,255,0.15); 
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%; 
+            display: none; 
+            justify-content: center; 
+            align-items: center;
+            touch-action: none;
+            -webkit-user-select: none;
+            z-index: 50;
+        }
+        #move-ctrl:active { background: rgba(0,122,255,0.4); border-color: #007aff; scale: 0.95; }
+        #move-ctrl::after { content: "▲"; color: white; font-size: 24px; }
     </style>
 </head>
 <body>
 
 <div id="overlay">
-    <h2>视觉+惯性融合动力学</h2>
-    <p>将使用后置摄像头识别地面纹理偏移</p>
-    <button id="btn-start">授权并初始化</button>
+    <h2>混合动力空间</h2>
+    <p>倾斜手机旋转视角<br>长按下方按钮前进</p>
+    <button id="btn-start">启动系统</button>
 </div>
-<div id="hud">VIO STATUS: WAITING</div>
-<video id="view-debug" autoplay playsinline muted></video>
+
+<div id="hud">STATUS: STANDBY</div>
+<div id="move-ctrl"></div>
 
 <script type="module">
     import * as THREE from 'https://cdn.skypack.dev/three@0.128.0';
     import { DeviceOrientationControls } from 'https://cdn.skypack.dev/three@0.128.0/examples/jsm/controls/DeviceOrientationControls.js';
 
-    let scene, camera, renderer, controls, player, video;
+    let scene, camera, renderer, controls, player;
     let isRunning = false;
+    let isMoving = false;
     let clock = new THREE.Clock();
-    let prevFrameData = null;
     
     const physics = {
         vel: new THREE.Vector3(),
-        visBoost: 0,
-        friction: 0.85,
+        speed: 8.0,      // 移动速度
+        friction: 0.92,  // 惯性滑动阻力
         height: 1.7
     };
 
-    async function initCamera() {
-        video = document.getElementById('view-debug');
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-            video: { facingMode: "environment", width: 160, height: 120 } 
-        });
-        video.srcObject = stream;
-    }
-
-    function processVisualOdometry() {
-        if (!video || video.readyState !== video.HAVE_ENOUGH_DATA) return;
-
-        const canvas = document.createElement('canvas');
-        canvas.width = 40; canvas.height = 30;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const currentFrame = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-
-        if (prevFrameData) {
-            let diff = 0;
-            for (let i = 0; i < currentFrame.length; i += 4) {
-                diff += Math.abs(currentFrame[i] - prevFrameData[i]);
-            }
-            // 粗略估算：像素剧烈变化通常代表物理位移
-            physics.visBoost = Math.max(0, (diff / 100000) - 0.5);
-        }
-        prevFrameData = currentFrame;
-    }
-
-    function initScene() {
+    function init() {
         scene = new THREE.Scene();
         scene.background = new THREE.Color(0x0a0a0a);
-        scene.fog = new THREE.Fog(0x0a0a0a, 10, 50);
+        scene.fog = new THREE.Fog(0x0a0a0a, 20, 70);
 
         camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        
         renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
         document.body.appendChild(renderer.domElement);
 
-        const grid = new THREE.GridHelper(200, 100, 0x444444, 0x222222);
+        const grid = new THREE.GridHelper(200, 60, 0x444444, 0x222222);
         scene.add(grid);
 
-        const ambient = new THREE.AmbientLight(0xffffff, 0.5);
+        const ambient = new THREE.AmbientLight(0xffffff, 0.6);
         scene.add(ambient);
 
+        const sun = new THREE.PointLight(0x007aff, 1, 100);
+        sun.position.set(0, 10, 0);
+        scene.add(sun);
+
+        for(let i=0; i<30; i++) {
+            const h = Math.random() * 8 + 1;
+            const box = new THREE.Mesh(
+                new THREE.BoxGeometry(2, h, 2),
+                new THREE.MeshStandardMaterial({ color: 0x333333 })
+            );
+            box.position.set(Math.random()*100-50, h/2, Math.random()*100-50);
+            scene.add(box);
+        }
+
         player = new THREE.Group();
-        player.position.y = physics.height;
+        player.position.set(0, physics.height, 0);
         player.add(camera);
         scene.add(player);
 
         controls = new DeviceOrientationControls(camera);
     }
 
-    function handleMotion(e) {
-        if (!isRunning) return;
-        const acc = e.acceleration;
-        const worldAcc = new THREE.Vector3(acc.x, 0, acc.z).applyQuaternion(camera.quaternion);
-        worldAcc.y = 0;
-        
-        // 融合视觉：如果摄像头检测到运动，大幅增强加速度响应
-        const multiplier = 1.0 + (physics.visBoost * 5.0);
-        physics.vel.addScaledVector(worldAcc, 0.08 * multiplier);
-    }
-
     function update() {
         const dt = clock.getDelta();
-        controls.update();
-        processVisualOdometry();
+        if (!isRunning) return;
 
-        physics.vel.multiplyScalar(physics.friction);
-        
-        // 注入视觉产生的恒定前向模拟（如果检测到运动）
-        if (physics.visBoost > 1.0) {
-            const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-            dir.y = 0;
-            player.position.addScaledVector(dir, physics.visBoost * 0.05);
+        controls.update();
+
+        if (isMoving) {
+            // 获取相机朝向的世界方向
+            const dir = new THREE.Vector3(0, 0, -1);
+            dir.applyQuaternion(camera.quaternion);
+            dir.y = 0; // 锁定水平移动
+            dir.normalize();
+            
+            // 动力加速
+            physics.vel.addScaledVector(dir, physics.speed * dt);
         }
 
-        player.position.addScaledVector(physics.vel, dt * 5);
-        
-        document.getElementById('hud').innerText = `VISUAL_MOTION: ${physics.visBoost.toFixed(2)}\nVEL: ${physics.vel.length().toFixed(2)}`;
+        // 应用阻力（物理惯性）
+        physics.vel.multiplyScalar(physics.friction);
+
+        // 更新位置
+        player.position.add(physics.vel);
+
+        document.getElementById('hud').innerText = `POS: X:${player.position.x.toFixed(2)} Z:${player.position.z.toFixed(2)}\nVEL: ${physics.vel.length().toFixed(3)}`;
     }
 
     function animate() {
-        if (!isRunning) return;
         requestAnimationFrame(animate);
         update();
         renderer.render(scene, camera);
     }
 
+    const moveBtn = document.getElementById('move-ctrl');
+    
+    // 触摸事件处理
+    moveBtn.addEventListener('touchstart', (e) => { e.preventDefault(); isMoving = true; });
+    moveBtn.addEventListener('touchend', () => { isMoving = false; });
+    moveBtn.addEventListener('mousedown', () => { isMoving = true; });
+    moveBtn.addEventListener('mouseup', () => { isMoving = false; });
+
     document.getElementById('btn-start').onclick = async () => {
-        try {
-            await initCamera();
-            if (typeof DeviceOrientationEvent.requestPermission === 'function') await DeviceOrientationEvent.requestPermission();
-            if (typeof DeviceMotionEvent.requestPermission === 'function') await DeviceMotionEvent.requestPermission();
-            
+        const res = typeof DeviceOrientationEvent.requestPermission === 'function' 
+            ? await DeviceOrientationEvent.requestPermission() 
+            : 'granted';
+
+        if (res === 'granted') {
             document.getElementById('overlay').style.display = 'none';
+            moveBtn.style.display = 'flex';
             isRunning = true;
-            initScene();
-            window.addEventListener('devicemotion', handleMotion, true);
+            init();
             animate();
-        } catch (e) { alert("需要摄像头与传感器权限"); }
+        }
+    };
+
+    window.onresize = () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
     };
 </script>
 </body>
