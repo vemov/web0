@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>3D Kinematics - Ground & Jump</title>
+    <title>3D Kinematics - Stable Ground Mode</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: -apple-system, sans-serif; }
         #overlay {
@@ -18,16 +18,16 @@
         }
         #hud {
             position: absolute; bottom: 20px; left: 20px; color: #0f0;
-            font-family: monospace; pointer-events: none; line-height: 1.5;
+            font-family: monospace; pointer-events: none;
         }
     </style>
 </head>
 <body>
 
 <div id="overlay">
-    <h2>物理反馈模式</h2>
-    <p>倾斜手机移动 | 握紧手机向上跳跃</p>
-    <button id="btn-start">授权并开始</button>
+    <h2>高精度地面模式</h2>
+    <p>垂直握持手机以同步<br>爆发性向上提拉触发跳跃</p>
+    <button id="btn-start">初始化传感器</button>
 </div>
 <div id="hud"></div>
 
@@ -39,12 +39,12 @@
     let clock = new THREE.Clock();
     
     const velocity = new THREE.Vector3();
-    const gravity = -18.0; 
-    const jumpStrength = 8.0;
-    const moveStrength = 45.0;
-    const friction = 0.92;
-    const angleDeadzone = 0.15; 
-    const jumpThreshold = 15.0; 
+    const gravity = -20.0; 
+    const jumpStrength = 10.0;
+    const moveStrength = 55.0;
+    const friction = 0.9;
+    const angleDeadzone = 0.25; 
+    const jumpThreshold = 25.0; 
 
     const state = { alpha: 0, beta: 90, gamma: 0, canJump: true };
     let baseBeta = 90;
@@ -58,30 +58,23 @@
         renderer.setPixelRatio(window.devicePixelRatio);
         document.body.appendChild(renderer.domElement);
 
-        const grid = new THREE.GridHelper(500, 50, 0x888888, 0x222222);
-        scene.add(grid);
+        scene.add(new THREE.GridHelper(500, 50, 0x444444, 0x222222));
+        scene.add(new THREE.AmbientLight(0x404040));
+        const light = new THREE.DirectionalLight(0xffffff, 1);
+        light.position.set(5, 10, 5);
+        scene.add(light);
 
-        const floor = new THREE.Mesh(
-            new THREE.PlaneGeometry(500, 500),
-            new THREE.MeshPhongMaterial({ color: 0x111111, side: THREE.DoubleSide })
-        );
-        floor.rotation.x = Math.PI / 2;
-        scene.add(floor);
-
-        for (let i = 0; i < 50; i++) {
+        for (let i = 0; i < 60; i++) {
             const mesh = new THREE.Mesh(
-                new THREE.BoxGeometry(4, 4, 4),
+                new THREE.BoxGeometry(2, 2, 2),
                 new THREE.MeshPhongMaterial({ color: Math.random() * 0xffffff })
             );
-            mesh.position.set(Math.random()*200-100, 2, Math.random()*200-100);
+            mesh.position.set(Math.random()*200-100, 1, Math.random()*200-100);
             scene.add(mesh);
         }
 
-        scene.add(new THREE.DirectionalLight(0xffffff, 1));
-        scene.add(new THREE.AmbientLight(0x404040));
-
         ball = new THREE.Group();
-        ball.position.y = 2.5; 
+        ball.position.y = 2; 
         ball.add(camera);
         scene.add(ball);
     }
@@ -90,11 +83,11 @@
         const acc = e.accelerationIncludingGravity;
         if (!acc) return;
         
-        const totalAcc = Math.abs(acc.x) + Math.abs(acc.y) + Math.abs(acc.z);
-        if (totalAcc > jumpThreshold && state.canJump && ball.position.y <= 2.51) {
+        const verticalForce = Math.sqrt(acc.x**2 + acc.y**2 + acc.z**2);
+        if (verticalForce > jumpThreshold && state.canJump && ball.position.y <= 2.05) {
             velocity.y = jumpStrength;
             state.canJump = false;
-            setTimeout(() => { state.canJump = true; }, 500);
+            setTimeout(() => { state.canJump = true; }, 800);
         }
     }
 
@@ -106,34 +99,39 @@
 
     function update(dt) {
         const d2r = Math.PI / 180;
-        ball.quaternion.setFromEuler(new THREE.Euler(
+        
+        const euler = new THREE.Euler(
             (state.beta - 90) * d2r,
             state.alpha * d2r,
             -state.gamma * d2r,
             'YXZ'
-        ));
+        );
+        ball.quaternion.setFromEuler(euler);
 
         const rawForce = (baseBeta - state.beta) / 45;
         if (Math.abs(rawForce) > angleDeadzone) {
-            const force = rawForce - (Math.sign(rawForce) * angleDeadzone);
-            const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(ball.quaternion);
-            dir.y = 0; 
-            dir.normalize();
-            velocity.addScaledVector(dir, force * moveStrength * dt);
-        } else {
-            velocity.x *= friction;
-            velocity.z *= friction;
+            const force = (rawForce - (Math.sign(rawForce) * angleDeadzone)) * moveStrength;
+            
+            const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(ball.quaternion);
+            forward.y = 0; 
+            forward.normalize();
+            
+            velocity.x += forward.x * force * dt;
+            velocity.z += forward.z * force * dt;
         }
 
+        velocity.x *= friction;
+        velocity.z *= friction;
         velocity.y += gravity * dt;
+
         ball.position.addScaledVector(velocity, dt);
 
-        if (ball.position.y < 2.5) {
-            ball.position.y = 2.5;
+        if (ball.position.y < 2) {
+            ball.position.y = 2;
             velocity.y = 0;
         }
 
-        document.getElementById('hud').innerText = `ALT: ${ball.position.y.toFixed(2)}\nSPD: ${velocity.length().toFixed(2)}`;
+        document.getElementById('hud').innerText = `SPD: ${velocity.length().toFixed(2)}\nJUMP_RDY: ${state.canJump}`;
     }
 
     function animate() {
@@ -144,30 +142,19 @@
     }
 
     document.getElementById('btn-start').onclick = function() {
-        const p1 = typeof DeviceOrientationEvent.requestPermission === 'function' ? 
-                   DeviceOrientationEvent.requestPermission() : Promise.resolve('granted');
-        const p2 = typeof DeviceMotionEvent.requestPermission === 'function' ? 
-                   DeviceMotionEvent.requestPermission() : Promise.resolve('granted');
-
-        Promise.all([p1, p2]).then(results => {
-            if (results.every(r => r === 'granted')) start();
+        const p1 = typeof DeviceOrientationEvent.requestPermission === 'function' ? DeviceOrientationEvent.requestPermission() : Promise.resolve('granted');
+        const p2 = typeof DeviceMotionEvent.requestPermission === 'function' ? DeviceMotionEvent.requestPermission() : Promise.resolve('granted');
+        Promise.all([p1, p2]).then(res => {
+            if (res.every(v => v === 'granted')) {
+                document.getElementById('overlay').style.display = 'none';
+                isRunning = true;
+                init();
+                window.addEventListener('deviceorientation', handleOrientation);
+                window.addEventListener('devicemotion', handleMotion);
+                setTimeout(() => { baseBeta = state.beta; }, 300);
+                animate();
+            }
         });
-    };
-
-    function start() {
-        document.getElementById('overlay').style.display = 'none';
-        isRunning = true;
-        init();
-        window.addEventListener('deviceorientation', handleOrientation);
-        window.addEventListener('devicemotion', handleMotion);
-        setTimeout(() => { baseBeta = state.beta; }, 200);
-        animate();
-    }
-
-    window.onresize = () => {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
     };
 </script>
 </body>
