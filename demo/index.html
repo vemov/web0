@@ -17,11 +17,11 @@
 <body>
 
 <div id="force-overlay">
-    <div id="progress-text">在手机设备移动视角测试</div>
     <button id="btn-confirm">进入3D空间</button>
     <div id="progress-container">
         <div id="progress-bar"></div>
     </div>
+    <div id="progress-text">在手机设备移动视角测试</div>
 </div>
 
 <div id="hud">系统状态: 待机</div>
@@ -39,7 +39,7 @@
         scene.background = new THREE.Color(0x050505);
         
         camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(0, -1.5, 0); 
+        camera.position.set(1, -1.5, 0); 
         
         renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
         renderer.setSize(window.innerWidth, window.innerHeight);
