@@ -62,12 +62,12 @@
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             renderer.outputEncoding = THREE.sRGBEncoding;
             renderer.toneMapping = THREE.ACESFilmicToneMapping;
-            renderer.toneMappingExposure = 1.2;
+            renderer.toneMappingExposure = 1.0;
             document.body.appendChild(renderer.domElement);
-            const ambient = new THREE.AmbientLight(0xffffff, 1.0);
+            const ambient = new THREE.AmbientLight(0xffffff, 0.6);
             scene.add(ambient);
-            const light = new THREE.DirectionalLight(0xffffff, 1.5);
-            light.position.set(10, 10, 10);
+            const light = new THREE.DirectionalLight(0xffffff, 1.0);
+            light.position.set(5, 10, 7.5);
             scene.add(light);
             loadModel();
             controls = new DeviceOrientationControls(camera);
@@ -82,6 +82,11 @@
                 modelPath,
                 (gltf) => {
                     const model = gltf.scene;
+                    model.traverse((child) => {
+                        if (child.isMesh) {
+                            child.material.envMapIntensity = 1.0;
+                        }
+                    });
                     const box = new THREE.Box3().setFromObject(model);
                     const center = box.getCenter(new THREE.Vector3());
                     model.position.sub(center);
@@ -108,7 +113,7 @@
             requestAnimationFrame(animate);
             if (isRunning) {
                 controls.update();
-                const { x, y, z } = camera.rotation;
+                const { x, y } = camera.rotation;
                 document.getElementById('hud').innerText = `垂直角度: ${x.toFixed(3)}\n水平角度: ${y.toFixed(3)}`;
                 renderer.render(scene, camera);
             }
