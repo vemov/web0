@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Precision Kinematics</title>
+    <title>Constant Velocity & Collision</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: -apple-system, sans-serif; }
-        #overlay { position: absolute; width: 100%; height: 100%; background: rgba(0,0,0,0.9); color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; text-align: center; }
-        #btn-start { padding: 18px 50px; font-size: 16px; background: #007aff; color: white; border: none; border-radius: 30px; cursor: pointer; font-weight: bold; }
-        #hud { position: absolute; top: 20px; left: 20px; color: #0f0; font-family: monospace; font-size: 10px; pointer-events: none; background: rgba(0,0,0,0.7); padding: 10px; border-radius: 5px; border: 1px solid #333; z-index: 10; }
+        #overlay { position: absolute; width: 100%; height: 100%; background: rgba(0,0,0,0.95); color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; text-align: center; }
+        #btn-start { padding: 18px 50px; font-size: 16px; background: #007aff; color: white; border: none; border-radius: 12px; cursor: pointer; font-weight: 600; }
+        #hud { position: absolute; top: 20px; left: 20px; color: #0f0; font-family: monospace; font-size: 10px; pointer-events: none; background: rgba(0,0,0,0.8); padding: 12px; border-radius: 8px; border: 1px solid #333; line-height: 1.5; }
         #move-ctrl { 
             position: absolute; 
             bottom: 40px; 
@@ -17,7 +17,7 @@
             width: 70px; 
             height: 70px; 
             background: rgba(255,255,255,0.1); 
-            border: 1px solid rgba(255,255,255,0.3);
+            border: 2px solid rgba(255,255,255,0.2);
             border-radius: 50%; 
             display: none; 
             justify-content: center; 
@@ -26,18 +26,18 @@
             z-index: 50;
         }
         #move-ctrl:active { background: rgba(0,122,255,0.3); border-color: #007aff; }
-        #move-ctrl::after { content: "MOVE"; color: white; font-size: 10px; font-weight: bold; }
+        #move-ctrl::after { content: "▲"; color: white; font-size: 20px; }
     </style>
 </head>
 <body>
 
 <div id="overlay">
-    <h2>精密运动控制系统</h2>
-    <p>低速巡航模式 | 实时碰撞检测</p>
-    <button id="btn-start">初始化</button>
+    <h2>匀速动力学空间</h2>
+    <p style="opacity:0.6; font-size:13px;">通过手机陀螺仪移动视角</p>
+    <button id="btn-start">初始化环境</button>
 </div>
 
-<div id="hud">COLLISION: OFF</div>
+<div id="hud">STATUS: READY</div>
 <div id="move-ctrl"></div>
 
 <script type="module">
@@ -48,71 +48,63 @@
     let isRunning = false;
     let isMoving = false;
     let clock = new THREE.Clock();
-    let obstacles = [];
+    let collidableObjects = [];
+    let raycaster = new THREE.Raycaster();
     
     const physics = {
-        vel: new THREE.Vector3(),
-        maxSpeed: 0.05, 
-        accel: 0.15,
-        friction: 0.85,
-        radius: 0.6,
-        height: 1.7
+        speed: 2.5, 
+        height: 1.7,
+        collisionRadius: 1.0
     };
 
     function init() {
         scene = new THREE.Scene();
         scene.background = new THREE.Color(0x020202);
-        scene.fog = new THREE.Fog(0x020202, 5, 40);
+        scene.fog = new THREE.Fog(0x020202, 10, 50);
 
         camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         
         renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         document.body.appendChild(renderer.domElement);
 
-        const grid = new THREE.GridHelper(100, 50, 0x222222, 0x111111);
+        const grid = new THREE.GridHelper(200, 100, 0x222222, 0x111111);
         scene.add(grid);
 
         const ambient = new THREE.AmbientLight(0xffffff, 0.4);
         scene.add(ambient);
 
-        const light = new THREE.PointLight(0x007aff, 2, 20);
-        light.position.set(0, 5, 0);
+        const light = new THREE.PointLight(0x007aff, 2, 50);
+        light.position.set(0, 10, 0);
         scene.add(light);
 
-        const boxGeo = new THREE.BoxGeometry(2, 4, 2);
-        const boxMat = new THREE.MeshStandardMaterial({ color: 0x444444 });
+        const boxGeo = new THREE.BoxGeometry(2, 6, 2);
+        const boxMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, metalness: 0.5, roughness: 0.2 });
+
         for(let i=0; i<40; i++) {
             const box = new THREE.Mesh(boxGeo, boxMat);
-            box.position.set(
-                (Math.random() - 0.5) * 40,
-                2,
-                (Math.random() - 0.5) * 40
-            );
+            const x = Math.random() * 80 - 40;
+            const z = Math.random() * 80 - 40;
+            if (Math.abs(x) < 5 && Math.abs(z) < 5) continue; 
+            box.position.set(x, 3, z);
             scene.add(box);
-            obstacles.push(box);
+            collidableObjects.push(box);
         }
 
         player = new THREE.Group();
-        player.position.set(0, physics.height, 5);
+        player.position.set(0, physics.height, 0);
         player.add(camera);
         scene.add(player);
 
         controls = new DeviceOrientationControls(camera);
     }
 
-    function checkCollision(newPos) {
-        for (let obj of obstacles) {
-            const dx = newPos.x - obj.position.x;
-            const dz = newPos.z - obj.position.z;
-            const distance = Math.sqrt(dx * dx + dz * dz);
-            
-            if (distance < physics.radius + 1.0) {
-                return true;
-            }
-        }
-        return false;
+    function checkCollision(direction) {
+        if (direction.lengthSq() === 0) return false;
+        raycaster.set(player.position, direction);
+        const intersections = raycaster.intersectObjects(collidableObjects);
+        return intersections.length > 0 && intersections[0].distance < physics.collisionRadius;
     }
 
     function update() {
@@ -122,29 +114,16 @@
         controls.update();
 
         if (isMoving) {
-            const dir = new THREE.Vector3(0, 0, -1);
-            dir.applyQuaternion(camera.quaternion);
-            dir.y = 0;
-            dir.normalize();
-            physics.vel.addScaledVector(dir, physics.accel * dt);
+            const moveDir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+            moveDir.y = 0;
+            moveDir.normalize();
+
+            if (!checkCollision(moveDir)) {
+                player.position.addScaledVector(moveDir, physics.speed * dt);
+            }
         }
 
-        physics.vel.multiplyScalar(physics.friction);
-        if (physics.vel.length() > physics.maxSpeed) {
-            physics.vel.setLength(physics.maxSpeed);
-        }
-
-        const nextPos = player.position.clone().add(physics.vel);
-        
-        if (!checkCollision(nextPos)) {
-            player.position.copy(nextPos);
-            document.getElementById('hud').style.color = "#0f0";
-            document.getElementById('hud').innerText = `STATUS: CLEAR\nSPD: ${physics.vel.length().toFixed(3)} m/s`;
-        } else {
-            physics.vel.set(0, 0, 0);
-            document.getElementById('hud').style.color = "#f00";
-            document.getElementById('hud').innerText = `STATUS: COLLISION\nSPD: 0.000 m/s`;
-        }
+        document.getElementById('hud').innerText = `VELOCITY: ${isMoving ? physics.speed : 0} m/s\nCOORDINATES: ${player.position.x.toFixed(2)}, ${player.position.z.toFixed(2)}`;
     }
 
     function animate() {
@@ -154,23 +133,20 @@
     }
 
     const moveBtn = document.getElementById('move-ctrl');
-    moveBtn.addEventListener('touchstart', (e) => { e.preventDefault(); isMoving = true; });
-    moveBtn.addEventListener('touchend', () => { isMoving = false; });
-    moveBtn.addEventListener('mousedown', () => { isMoving = true; });
-    moveBtn.addEventListener('mouseup', () => { isMoving = false; });
+    ['touchstart', 'mousedown'].forEach(ev => moveBtn.addEventListener(ev, (e) => { e.preventDefault(); isMoving = true; }));
+    ['touchend', 'mouseup', 'mouseleave'].forEach(ev => moveBtn.addEventListener(ev, () => { isMoving = false; }));
 
     document.getElementById('btn-start').onclick = async () => {
-        const res = typeof DeviceOrientationEvent.requestPermission === 'function' 
-            ? await DeviceOrientationEvent.requestPermission() 
-            : 'granted';
-
-        if (res === 'granted') {
+        try {
+            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+                await DeviceOrientationEvent.requestPermission();
+            }
             document.getElementById('overlay').style.display = 'none';
             moveBtn.style.display = 'flex';
             isRunning = true;
             init();
             animate();
-        }
+        } catch (e) { console.error(e); }
     };
 
     window.onresize = () => {
