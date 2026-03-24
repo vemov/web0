@@ -3,23 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Advanced 6-DOF Kinematics</title>
+    <title>High-Fidelity 6-DOF Space</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; font-family: -apple-system, sans-serif; }
+        body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
         #overlay { position: absolute; width: 100%; height: 100%; background: rgba(0,0,0,0.9); color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; text-align: center; }
-        button { padding: 18px 45px; font-size: 18px; background: #007aff; color: white; border: none; border-radius: 40px; cursor: pointer; transition: 0.3s; }
-        button:active { transform: scale(0.95); background: #0056b3; }
-        #hud { position: absolute; top: 20px; left: 20px; color: #0f0; font-family: monospace; pointer-events: none; background: rgba(0,0,0,0.6); padding: 12px; border-radius: 8px; font-size: 11px; line-height: 1.6; border: 1px solid #333; }
+        button { padding: 20px 50px; font-size: 18px; background: #007aff; color: white; border: none; border-radius: 40px; cursor: pointer; font-weight: bold; }
+        #hud { position: absolute; top: 20px; left: 20px; color: #0f0; font-family: monospace; font-size: 11px; pointer-events: none; background: rgba(0,0,0,0.7); padding: 15px; border-radius: 10px; border: 1px solid #333; }
     </style>
 </head>
 <body>
 
 <div id="overlay">
-    <h2>高级空间动力学引擎</h2>
-    <p>保持手机垂直静止并点击开始<br>系统将自动校准环境噪声</p>
-    <button id="btn-start">开始校准并进入</button>
+    <h2>完善级空间动力学</h2>
+    <p>包含实时光影追踪与地面反馈<br>请垂直握持手机开始</p>
+    <button id="btn-start">初始化环境</button>
 </div>
-<div id="hud">CALIBRATING...</div>
+<div id="hud">STATUS: STANDBY</div>
 
 <script type="module">
     import * as THREE from 'https://cdn.skypack.dev/three@0.128.0';
@@ -29,97 +28,110 @@
     let isRunning = false;
     let clock = new THREE.Clock();
     
-    // 严谨物理参数
-    const params = {
-        velocity: new THREE.Vector3(),
-        lastAcc: new THREE.Vector3(),
-        bias: 0.5,           // 动态死区
-        sensitivity: 12.0,   // 移动灵敏度
-        friction: 0.94,      // 空间阻力
-        lerpFactor: 0.1      // 数据平滑因子
+    const physics = {
+        vel: new THREE.Vector3(),
+        acc: new THREE.Vector3(),
+        friction: 0.92,
+        sensitivity: 18.0,
+        lowPass: 0.1,
+        height: 1.7
     };
 
     function init() {
         scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x020202);
-        scene.fog = new THREE.Fog(0x020202, 10, 100);
+        scene.background = new THREE.Color(0x111111);
+        scene.fog = new THREE.Fog(0x111111, 10, 80);
 
         camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        
         renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         document.body.appendChild(renderer.domElement);
 
-        // 增强视觉参照
-        const grid = new THREE.GridHelper(200, 40, 0x333333, 0x111111);
-        scene.add(grid);
+        // 地面：使用标准材质接收阴影
+        const floorGeo = new THREE.PlaneGeometry(200, 200);
+        const floorMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.8, metalness: 0.2 });
+        const floor = new THREE.Mesh(floorGeo, floorMat);
+        floor.rotation.x = -Math.PI / 2;
+        floor.receiveShadow = true;
+        scene.add(floor);
 
-        for (let i = 0; i < 60; i++) {
-            const h = Math.random() * 4 + 1;
-            const m = new THREE.Mesh(
-                new THREE.BoxGeometry(1, h, 1), 
-                new THREE.MeshPhongMaterial({ color: 0x444444, wireframe: true })
+        // 环境光源
+        const ambient = new THREE.AmbientLight(0xffffff, 0.4);
+        scene.add(ambient);
+
+        // 主光源：投射阴影
+        const sun = new THREE.DirectionalLight(0xffffff, 0.8);
+        sun.position.set(20, 40, 20);
+        sun.castShadow = true;
+        sun.shadow.camera.left = -50;
+        sun.shadow.camera.right = 50;
+        sun.shadow.camera.top = 50;
+        sun.shadow.camera.bottom = -50;
+        sun.shadow.mapSize.width = 1024;
+        sun.shadow.mapSize.height = 1024;
+        scene.add(sun);
+
+        // 障碍物
+        for(let i=0; i<40; i++) {
+            const h = Math.random() * 5 + 1;
+            const box = new THREE.Mesh(
+                new THREE.BoxGeometry(2, h, 2),
+                new THREE.MeshStandardMaterial({ color: 0x555555 })
             );
-            m.position.set(Math.random()*100-50, h/2, Math.random()*100-50);
-            scene.add(m);
+            box.position.set(Math.random()*100-50, h/2, Math.random()*100-50);
+            box.castShadow = true;
+            box.receiveShadow = true;
+            scene.add(box);
         }
 
-        scene.add(new THREE.AmbientLight(0xffffff, 0.2));
-        const light = new THREE.PointLight(0x007aff, 2, 50);
-        light.position.set(0, 5, 0);
-        scene.add(light);
-
         player = new THREE.Group();
-        player.position.set(0, 1.7, 0);
+        player.position.y = physics.height;
         player.add(camera);
         scene.add(player);
+
+        // 代表玩家的影子实体（隐藏模型但保留阴影）
+        const proxy = new THREE.Mesh(new THREE.SphereGeometry(0.5), new THREE.MeshBasicMaterial({visible: false}));
+        proxy.castShadow = true;
+        player.add(proxy);
 
         controls = new DeviceOrientationControls(camera);
     }
 
     function handleMotion(e) {
         if (!isRunning || !e.acceleration) return;
+        const rawAcc = new THREE.Vector3(e.acceleration.x, e.acceleration.y, e.acceleration.z);
+        
+        // 滤波处理
+        physics.acc.lerp(rawAcc, physics.lowPass);
 
-        // 1. 获取线性加速度 (Linear Acceleration)
-        let rawAcc = new THREE.Vector3(e.acceleration.x, e.acceleration.y, e.acceleration.z);
-
-        // 2. 指数移动平均滤波 (EMA Filter) - 减少高频噪声抖动
-        params.lastAcc.lerp(rawAcc, params.lerpFactor);
-
-        // 3. 动态死区逻辑
-        if (params.lastAcc.length() < params.bias) return;
-
-        // 4. 坐标系转换：从手机 Local 转换到相机视角 World
-        let worldForce = params.lastAcc.clone();
-        worldForce.applyQuaternion(camera.quaternion);
-
-        // 5. 运动映射：
-        // 手机向左晃 -> 场景向左移
-        // 手机向前推 -> 场景向前走
-        // 屏蔽微小的 Y 轴干扰，保留跳跃感
-        if (Math.abs(params.lastAcc.y) < 2.0) worldForce.y = 0;
-
-        params.velocity.addScaledVector(worldForce, params.sensitivity * 0.01);
+        if (physics.acc.length() > 0.5) {
+            const worldDir = physics.acc.clone();
+            worldDir.applyQuaternion(camera.quaternion);
+            
+            // 锁定地面运动并保留跳跃感
+            if (Math.abs(physics.acc.y) < 3.0) worldDir.y = 0;
+            
+            physics.vel.addScaledVector(worldDir, physics.sensitivity * 0.01);
+        }
     }
 
     function update() {
         const dt = clock.getDelta();
         controls.update();
 
-        // 应用阻力
-        params.velocity.multiplyScalar(params.friction);
-        
-        // 更新位置
-        player.position.addScaledVector(params.velocity, dt * 15);
+        physics.vel.multiplyScalar(physics.friction);
+        player.position.addScaledVector(physics.vel, dt * 10);
 
-        // 简易地面碰撞
-        if (player.position.y < 1.7) {
-            player.position.y = 1.7;
-            params.velocity.y = 0;
+        if (player.position.y < physics.height) {
+            player.position.y = physics.height;
+            physics.vel.y = 0;
         }
 
-        document.getElementById('hud').innerText = 
-            `COORD: X:${player.position.x.toFixed(2)} Z:${player.position.z.toFixed(2)}\nVELOCITY: ${params.velocity.length().toFixed(3)}\nSTATUS: 6-DOF TRACKING`;
+        document.getElementById('hud').innerText = `POS: X:${player.position.x.toFixed(2)} Z:${player.position.z.toFixed(2)}\nFPS: ${Math.round(1/dt)}`;
     }
 
     function animate() {
@@ -136,16 +148,11 @@
         ]);
 
         if (res.every(s => s === 'granted')) {
-            document.getElementById('overlay').innerHTML = "<h2>校准中...请保持手机静止</h2>";
-            
-            // 自动校准环境偏置
-            setTimeout(() => {
-                document.getElementById('overlay').style.display = 'none';
-                isRunning = true;
-                init();
-                window.addEventListener('devicemotion', handleMotion, true);
-                animate();
-            }, 1000);
+            document.getElementById('overlay').style.display = 'none';
+            isRunning = true;
+            init();
+            window.addEventListener('devicemotion', handleMotion, true);
+            animate();
         }
     };
 </script>
