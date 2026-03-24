@@ -3,64 +3,97 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Fixed Orientation Space</title>
+    <title>3D 空间</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: -apple-system, sans-serif; }
         #hud { position: absolute; top: 20px; left: 20px; color: #0f0; font-family: monospace; font-size: 10px; pointer-events: none; background: rgba(0,0,0,0.8); padding: 12px; border-radius: 8px; border: 1px solid #333; z-index: 10; }
         #force-overlay { position: absolute; inset: 0; background: #000; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; color: white; text-align: center; }
-        #btn-confirm { padding: 20px 60px; background: #ffffff; color: #000; border: none; border-radius: 2px; cursor: pointer; font-weight: bold; letter-spacing: 2px; }
+        #btn-confirm { padding: 20px 60px; background: #ffffff; color: #000; border: none; border-radius: 2px; cursor: pointer; font-weight: bold; letter-spacing: 2px; margin-bottom: 20px; }
+        #progress-container { width: 200px; height: 2px; background: #222; border-radius: 2px; display: none; overflow: hidden; position: relative; }
+        #progress-bar { width: 0%; height: 100%; background: #007aff; transition: width 0.3s; }
+        #progress-text { margin-top: 10px; font-size: 11px; color: #666; font-family: monospace; }
     </style>
 </head>
 <body>
 
 <div id="force-overlay">
-    <p style="margin-bottom: 30px; opacity: 0.8;">移动手机视角进行测试</p>
-    <button id="btn-confirm">确认并进入</button>
+    <button id="btn-confirm">进入3D空间</button>
+    <div id="progress-container">
+        <div id="progress-bar"></div>
+    </div>
+    <div id="progress-text">在手机设备移动视角测试</div>
 </div>
 
-<div id="hud">VIEWPORT: LOCKED</div>
+<div id="hud">系统状态: 待机</div>
 
 <script type="module">
-    import * as THREE from 'https://cdn.skypack.dev/three@0.128.0';
-    import { DeviceOrientationControls } from 'https://cdn.skypack.dev/three@0.128.0/examples/jsm/controls/DeviceOrientationControls.js';
+    import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
+    import { DeviceOrientationControls } from 'https://unpkg.com/three@0.160.0/examples/jsm/controls/DeviceOrientationControls.js';
+    import { GLTFLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
 
     let scene, camera, renderer, controls;
     let isRunning = false;
 
-    function init() {
+    function initScene() {
         scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x020202);
+        scene.background = new THREE.Color(0x050505);
         
         camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(0, 1.7, 0);
+        camera.position.set(1, -1.5, 1); 
         
-        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        
+        // 0.160.0 版本中 outputEncoding 已更名为 outputColorSpace
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.2;
         document.body.appendChild(renderer.domElement);
 
-        const grid = new THREE.GridHelper(100, 50, 0x222222, 0x111111);
-        scene.add(grid);
+        const ambient = new THREE.AmbientLight(0xffffff, 1.0);
+        scene.add(ambient);
 
-        const light = new THREE.HemisphereLight(0xffffff, 0x444444, 1);
+        const light = new THREE.DirectionalLight(0xffffff, 1.5);
+        light.position.set(10, 10, 10);
         scene.add(light);
 
-        const geometry = new THREE.IcosahedronGeometry(0.5, 0);
-        for(let i=0; i<100; i++) {
-            const material = new THREE.MeshPhongMaterial({ color: 0x007aff, wireframe: true });
-            const mesh = new THREE.Mesh(geometry, material);
-            const r = 10 + Math.random() * 20;
-            const theta = Math.random() * Math.PI * 2;
-            const phi = Math.random() * Math.PI;
-            mesh.position.set(
-                r * Math.sin(phi) * Math.cos(theta),
-                Math.random() * 15,
-                r * Math.sin(phi) * Math.sin(theta)
-            );
-            scene.add(mesh);
-        }
-
+        loadModel();
         controls = new DeviceOrientationControls(camera);
+    }
+
+    function loadModel() {
+        const loader = new GLTFLoader();
+        const pBar = document.getElementById('progress-bar');
+        const pText = document.getElementById('progress-text');
+        
+        document.getElementById('progress-container').style.display = 'block';
+
+        loader.load(
+            'demo/4444.glb',
+            (gltf) => {
+                const model = gltf.scene;
+                const box = new THREE.Box3().setFromObject(model);
+                const center = box.getCenter(new THREE.Vector3());
+                model.position.sub(center); 
+                scene.add(model);
+                
+                document.getElementById('force-overlay').style.display = 'none';
+                isRunning = true;
+                animate();
+            },
+            (xhr) => {
+                if (xhr.lengthComputable) {
+                    const percent = (xhr.loaded / xhr.total * 100);
+                    pBar.style.width = percent + '%';
+                    pText.innerText = `正在加载资源: ${Math.round(percent)}%`;
+                }
+            },
+            (error) => {
+                pText.innerText = '资源加载错误';
+                console.error(error);
+            }
+        );
     }
 
     function animate() {
@@ -68,7 +101,7 @@
         if (isRunning) {
             controls.update();
             const { x, y, z } = camera.rotation;
-            document.getElementById('hud').innerText = `X: ${x.toFixed(3)}\nY: ${y.toFixed(3)}\nZ: ${z.toFixed(3)}`;
+            document.getElementById('hud').innerText = `垂直角度: ${x.toFixed(3)}\n水平角度: ${y.toFixed(3)}`;
             renderer.render(scene, camera);
         }
     }
@@ -76,26 +109,18 @@
     document.getElementById('btn-confirm').onclick = async () => {
         try {
             if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-                const status = await DeviceOrientationEvent.requestPermission();
-                if (status !== 'granted') {
-                    alert("检测到权限拒绝。请重新点击确认并允许访问。");
-                    return;
-                }
+                const res = await DeviceOrientationEvent.requestPermission();
+                if (res !== 'granted') return alert("权限请求被拒绝。");
             }
-            
-            document.getElementById('force-overlay').style.display = 'none';
-            isRunning = true;
-            init();
-            animate();
-            
+            document.getElementById('btn-confirm').style.display = 'none';
+            initScene();
         } catch (e) {
-            console.error(e);
-            alert("请在移动设备浏览器中打开此页面。");
+            alert("请确保使用 HTTPS 协议并在移动设备上访问。");
         }
     };
 
     window.addEventListener('resize', () => {
-        if (!camera) return;
+        if (!camera || !renderer) return;
         camera.aspect = window.innerWidth / window.innerHeight;
         camera.updateProjectionMatrix();
         renderer.setSize(window.innerWidth, window.innerHeight);
