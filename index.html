@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>3D 空间</title>
+    <title>3D 空间 - 高版本纹理优化</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: -apple-system, sans-serif; }
         #hud { position: absolute; top: 20px; left: 20px; color: #0f0; font-family: monospace; font-size: 10px; pointer-events: none; background: rgba(0,0,0,0.8); padding: 12px; border-radius: 8px; border: 1px solid #333; z-index: 10; }
@@ -27,9 +27,12 @@
 <div id="hud">系统状态: 待机</div>
 
 <script type="module">
-    import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
-    import { DeviceOrientationControls } from 'https://unpkg.com/three@0.160.0/examples/jsm/controls/DeviceOrientationControls.js';
-    import { GLTFLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
+    import * as THREE from 'https://esm.sh/three@0.160.0';
+    import { DeviceOrientationControls } from 'https://esm.sh/three@0.160.0/examples/jsm/controls/DeviceOrientationControls.js';
+    import { GLTFLoader } from 'https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
+
+    // 1. 开启高版本色彩管理（必须在创建任何材质前设置）
+    THREE.ColorManagement.enabled = true;
 
     let scene, camera, renderer, controls;
     let isRunning = false;
@@ -41,21 +44,26 @@
         camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         camera.position.set(1, -1.5, 1); 
         
-        renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+        renderer = new THREE.WebGLRenderer({ 
+            antialias: true, 
+            powerPreference: "high-performance",
+            alpha: false 
+        });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         
-        // 0.160.0 版本中 outputEncoding 已更名为 outputColorSpace
-        renderer.outputColorSpace = THREE.SRGBColorSpace;
-        renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        renderer.toneMappingExposure = 1.2;
+        // 2. 纹理与光影优化
+        renderer.outputColorSpace = THREE.SRGBColorSpace; // 确保纹理色彩不发白
+        renderer.toneMapping = THREE.ACESFilmicToneMapping; // 电影级色调映射
+        renderer.toneMappingExposure = 1.2; // 调整曝光度
+        
         document.body.appendChild(renderer.domElement);
 
-        const ambient = new THREE.AmbientLight(0xffffff, 1.0);
+        const ambient = new THREE.AmbientLight(0xffffff, 0.8);
         scene.add(ambient);
 
-        const light = new THREE.DirectionalLight(0xffffff, 1.5);
-        light.position.set(10, 10, 10);
+        const light = new THREE.DirectionalLight(0xffffff, 2.0); // 增加主光强度
+        light.position.set(10, 20, 10);
         scene.add(light);
 
         loadModel();
@@ -73,6 +81,19 @@
             'demo/4444.glb',
             (gltf) => {
                 const model = gltf.scene;
+                
+                // 3. 遍历模型，确保所有材质都应用了高版本的高质量设置
+                model.traverse((child) => {
+                    if (child.isMesh) {
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                        if (child.material.map) {
+                            // 确保纹理映射在正确的色彩空间
+                            child.material.map.anisotropy = renderer.capabilities.getMaxAnisotropy();
+                        }
+                    }
+                });
+
                 const box = new THREE.Box3().setFromObject(model);
                 const center = box.getCenter(new THREE.Vector3());
                 model.position.sub(center); 
