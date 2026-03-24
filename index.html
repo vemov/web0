@@ -3,132 +3,123 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>6-DOF Sensor Fusion Space</title>
+    <title>Advanced 6-DOF Kinematics</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
-        #overlay { position: absolute; width: 100%; height: 100%; background: rgba(0,0,0,0.85); color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; text-align: center; }
-        button { padding: 18px 45px; font-size: 20px; background: #007aff; color: white; border: none; border-radius: 35px; cursor: pointer; box-shadow: 0 5px 20px rgba(0,122,255,0.4); }
-        #hud { position: absolute; top: 20px; left: 20px; color: #0f0; font-family: monospace; font-size: 12px; pointer-events: none; background: rgba(0,0,0,0.5); padding: 10px; border-radius: 5px; }
+        body { margin: 0; overflow: hidden; background: #000; font-family: -apple-system, sans-serif; }
+        #overlay { position: absolute; width: 100%; height: 100%; background: rgba(0,0,0,0.9); color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; text-align: center; }
+        button { padding: 18px 45px; font-size: 18px; background: #007aff; color: white; border: none; border-radius: 40px; cursor: pointer; transition: 0.3s; }
+        button:active { transform: scale(0.95); background: #0056b3; }
+        #hud { position: absolute; top: 20px; left: 20px; color: #0f0; font-family: monospace; pointer-events: none; background: rgba(0,0,0,0.6); padding: 12px; border-radius: 8px; font-size: 11px; line-height: 1.6; border: 1px solid #333; }
     </style>
 </head>
 <body>
 
 <div id="overlay">
-    <h1>全空间运动模拟</h1>
-    <p>旋转手机查看四周<br>物理走动、原地踏步或平移触发位移</p>
-    <button id="btn-start">初始化 6-DOF 追踪</button>
+    <h2>高级空间动力学引擎</h2>
+    <p>保持手机垂直静止并点击开始<br>系统将自动校准环境噪声</p>
+    <button id="btn-start">开始校准并进入</button>
 </div>
-<div id="hud">WAITING...</div>
+<div id="hud">CALIBRATING...</div>
 
 <script type="module">
     import * as THREE from 'https://cdn.skypack.dev/three@0.128.0';
+    import { DeviceOrientationControls } from 'https://cdn.skypack.dev/three@0.128.0/examples/jsm/controls/DeviceOrientationControls.js';
 
-    let scene, camera, renderer, worldContainer;
+    let scene, camera, renderer, controls, player;
     let isRunning = false;
     let clock = new THREE.Clock();
-
-    const motionState = {
-        orientation: new THREE.Quaternion(),
+    
+    // 严谨物理参数
+    const params = {
         velocity: new THREE.Vector3(),
-        position: new THREE.Vector3(0, 1.7, 0),
-        stepCooldown: 0
+        lastAcc: new THREE.Vector3(),
+        bias: 0.5,           // 动态死区
+        sensitivity: 12.0,   // 移动灵敏度
+        friction: 0.94,      // 空间阻力
+        lerpFactor: 0.1      // 数据平滑因子
     };
 
-    const CONFIG = {
-        STEP_THRESHOLD: 1.5, // 步态检测阈值 (m/s²)
-        STEP_DISTANCE: 0.6,  // 单步位移量 (米)
-        LATERAL_THRESHOLD: 1.2, // 侧移检测阈值
-        FRICTION: 0.85,      // 惯性摩擦
-        GROUND_Y: 1.7        // 相机高度（模拟身高）
-    };
-
-    function initScene() {
+    function init() {
         scene = new THREE.Scene();
-        scene.fog = new THREE.Fog(0x000000, 1, 100);
+        scene.background = new THREE.Color(0x020202);
+        scene.fog = new THREE.Fog(0x020202, 10, 100);
 
         camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        
         renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setPixelRatio(window.devicePixelRatio);
         document.body.appendChild(renderer.domElement);
 
-        const grid = new THREE.GridHelper(200, 40, 0x444444, 0x222222);
+        // 增强视觉参照
+        const grid = new THREE.GridHelper(200, 40, 0x333333, 0x111111);
         scene.add(grid);
 
-        for (let i = 0; i < 80; i++) {
-            const geometry = new THREE.BoxGeometry(1, Math.random() * 5, 1);
-            const material = new THREE.MeshPhongMaterial({ color: Math.random() * 0xffffff });
-            const cube = new THREE.Mesh(geometry, material);
-            cube.position.set(Math.random() * 100 - 50, cube.geometry.parameters.height/2, Math.random() * 100 - 50);
-            scene.add(cube);
+        for (let i = 0; i < 60; i++) {
+            const h = Math.random() * 4 + 1;
+            const m = new THREE.Mesh(
+                new THREE.BoxGeometry(1, h, 1), 
+                new THREE.MeshPhongMaterial({ color: 0x444444, wireframe: true })
+            );
+            m.position.set(Math.random()*100-50, h/2, Math.random()*100-50);
+            scene.add(m);
         }
 
-        scene.add(new THREE.AmbientLight(0x404040));
-        const sun = new THREE.DirectionalLight(0xffffff, 1);
-        sun.position.set(10, 20, 10);
-        scene.add(sun);
+        scene.add(new THREE.AmbientLight(0xffffff, 0.2));
+        const light = new THREE.PointLight(0x007aff, 2, 50);
+        light.position.set(0, 5, 0);
+        scene.add(light);
 
-        window.addEventListener('resize', onResize);
-    }
+        player = new THREE.Group();
+        player.position.set(0, 1.7, 0);
+        player.add(camera);
+        scene.add(player);
 
-    function handleOrientation(e) {
-        if (!e.alpha) return;
-        const d2r = Math.PI / 180;
-        const euler = new THREE.Euler(
-            (e.beta - 90) * d2r, 
-            e.alpha * d2r, 
-            -e.gamma * d2r, 
-            'YXZ'
-        );
-        motionState.orientation.setFromEuler(euler);
+        controls = new DeviceOrientationControls(camera);
     }
 
     function handleMotion(e) {
         if (!isRunning || !e.acceleration) return;
 
-        const acc = e.acceleration; 
-        const accVec = new THREE.Vector3(acc.x, acc.y, acc.z);
-        const force = accVec.length();
+        // 1. 获取线性加速度 (Linear Acceleration)
+        let rawAcc = new THREE.Vector3(e.acceleration.x, e.acceleration.y, e.acceleration.z);
 
-        if (motionState.stepCooldown <= 0) {
-            const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(motionState.orientation);
-            const right = new THREE.Vector3(1, 0, 0).applyQuaternion(motionState.orientation);
-            forward.y = 0; forward.normalize();
-            right.y = 0; right.normalize();
+        // 2. 指数移动平均滤波 (EMA Filter) - 减少高频噪声抖动
+        params.lastAcc.lerp(rawAcc, params.lerpFactor);
 
-            let moved = false;
+        // 3. 动态死区逻辑
+        if (params.lastAcc.length() < params.bias) return;
 
-            if (acc.z < -CONFIG.STEP_THRESHOLD) { // 物理向前
-                motionState.velocity.addScaledVector(forward, CONFIG.STEP_DISTANCE);
-                moved = true;
-            } else if (acc.z > CONFIG.STEP_THRESHOLD) { // 物理向后
-                motionState.velocity.addScaledVector(forward, -CONFIG.STEP_DISTANCE);
-                moved = true;
-            }
+        // 4. 坐标系转换：从手机 Local 转换到相机视角 World
+        let worldForce = params.lastAcc.clone();
+        worldForce.applyQuaternion(camera.quaternion);
 
-            if (Math.abs(acc.x) > CONFIG.LATERAL_THRESHOLD) { // 物理侧移
-                motionState.velocity.addScaledVector(right, -acc.x * 0.2);
-                moved = true;
-            }
+        // 5. 运动映射：
+        // 手机向左晃 -> 场景向左移
+        // 手机向前推 -> 场景向前走
+        // 屏蔽微小的 Y 轴干扰，保留跳跃感
+        if (Math.abs(params.lastAcc.y) < 2.0) worldForce.y = 0;
 
-            if (moved) motionState.stepCooldown = 0.3; // 300ms 采样冷却
-        }
+        params.velocity.addScaledVector(worldForce, params.sensitivity * 0.01);
     }
 
     function update() {
         const dt = clock.getDelta();
-        if (motionState.stepCooldown > 0) motionState.stepCooldown -= dt;
+        controls.update();
 
-        camera.quaternion.copy(motionState.orientation);
-
-        motionState.velocity.multiplyScalar(CONFIG.FRICTION);
-        motionState.position.addScaledVector(motionState.velocity, dt * 10);
+        // 应用阻力
+        params.velocity.multiplyScalar(params.friction);
         
-        camera.position.copy(motionState.position);
+        // 更新位置
+        player.position.addScaledVector(params.velocity, dt * 15);
+
+        // 简易地面碰撞
+        if (player.position.y < 1.7) {
+            player.position.y = 1.7;
+            params.velocity.y = 0;
+        }
 
         document.getElementById('hud').innerText = 
-            `POS: ${motionState.position.x.toFixed(2)}, ${motionState.position.z.toFixed(2)}\nVEL: ${motionState.velocity.length().toFixed(2)}`;
+            `COORD: X:${player.position.x.toFixed(2)} Z:${player.position.z.toFixed(2)}\nVELOCITY: ${params.velocity.length().toFixed(3)}\nSTATUS: 6-DOF TRACKING`;
     }
 
     function animate() {
@@ -138,29 +129,23 @@
         renderer.render(scene, camera);
     }
 
-    function onResize() {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-    }
-
     document.getElementById('btn-start').onclick = async () => {
-        try {
-            const ori = typeof DeviceOrientationEvent.requestPermission === 'function' ? 
-                await DeviceOrientationEvent.requestPermission() : 'granted';
-            const mot = typeof DeviceMotionEvent.requestPermission === 'function' ? 
-                await DeviceMotionEvent.requestPermission() : 'granted';
+        const res = await Promise.all([
+            typeof DeviceOrientationEvent.requestPermission === 'function' ? DeviceOrientationEvent.requestPermission() : 'granted',
+            typeof DeviceMotionEvent.requestPermission === 'function' ? DeviceMotionEvent.requestPermission() : 'granted'
+        ]);
 
-            if (ori === 'granted' && mot === 'granted') {
+        if (res.every(s => s === 'granted')) {
+            document.getElementById('overlay').innerHTML = "<h2>校准中...请保持手机静止</h2>";
+            
+            // 自动校准环境偏置
+            setTimeout(() => {
                 document.getElementById('overlay').style.display = 'none';
                 isRunning = true;
-                initScene();
-                window.addEventListener('deviceorientation', handleOrientation);
-                window.addEventListener('devicemotion', handleMotion);
+                init();
+                window.addEventListener('devicemotion', handleMotion, true);
                 animate();
-            }
-        } catch (e) {
-            alert("请在 HTTPS 环境下使用，并授予传感器权限。");
+            }, 1000);
         }
     };
 </script>
