@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>检测</title>
+    <title>Multi-Touch Promise</title>
     <style>
         :root {
             --touch-size: 60px;
@@ -156,9 +156,11 @@
             const ua = navigator.userAgent.toLowerCase();
             const isAndroid = ua.indexOf("android") > -1;
             if (!isAndroid) {
-                document.getElementById('device-error').style.display = 'flex';
-                return;
-            }
+        const errorEl = document.getElementById('device-error');
+        errorEl.style.display = 'flex';
+        errorEl.textContent = '请在安卓手机上打开'; 
+        return;
+    }
 
             const statusLabel = document.getElementById('status-label');
             const topGroup = document.getElementById('top-group');
