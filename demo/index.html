@@ -2,182 +2,223 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>3D 空间</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Multi-Touch Promise</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; font-family: -apple-system, sans-serif; }
-        #hud { position: absolute; top: 20px; left: 20px; color: #0f0; font-family: monospace; font-size: 10px; pointer-events: none; background: rgba(0,0,0,0.8); padding: 12px; border-radius: 8px; border: 1px solid #333; z-index: 10; }
-        #force-overlay { position: absolute; inset: 0; background: #000; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; color: white; text-align: center; }
-        #btn-confirm { padding: 20px 60px; background: #ffffff; color: #000; border: none; border-radius: 2px; cursor: pointer; font-weight: bold; letter-spacing: 2px; margin-bottom: 20px; }
-        #progress-container { width: 200px; height: 2px; background: #222; border-radius: 2px; display: none; overflow: hidden; position: relative; }
-        #progress-bar { width: 0%; height: 100%; background: #007aff; transition: width 0.3s; }
-        #progress-text { margin-top: 10px; font-size: 11px; color: #666; font-family: monospace; }
+        :root {
+            --touch-size: 60px;
+            --active-glow: rgba(0, 255, 115, 0.8);
+            --final-glow: rgba(255, 105, 180, 0.8);
+        }
+
+        * {
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            touch-action: none;
+            -webkit-tap-highlight-color: transparent;
+            box-sizing: border-box;
+        }
+
+        body, html {
+            margin: 0; padding: 0;
+            width: 100%; height: 100%;
+            background-color: #000;
+            overflow: hidden;
+            font-family: -apple-system, sans-serif;
+        }
+
+        #status-label {
+            position: absolute;
+            top: 35%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 85%;
+            text-align: center;
+            font-size: 22px;
+            font-weight: bold;
+            z-index: 999;
+            pointer-events: none;
+            line-height: 1.5;
+            transition: all 0.3s ease;
+        }
+
+        .status-waiting { color: #ff4d4f; }
+        .status-success { color: #52c41a; text-shadow: 0 0 10px rgba(82,196,26,0.5); }
+        .status-final { color: #ff69b4; text-shadow: 0 0 20px #ff69b4; font-size: 28px; }
+
+        .touch-container {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            height: 100%;
+            padding: 0 6%;
+            position: relative;
+            z-index: 1;
+        }
+
+        .top-group, .finger-layer {
+            visibility: hidden;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .visible {
+            visibility: visible;
+            opacity: 1;
+        }
+
+        .top-group {
+            position: absolute;
+            top: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 60px;
+        }
+
+        .side-group {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            height: 50%;
+            margin-bottom: 5vh;
+            align-self: flex-end;
+        }
+
+        .touch-point {
+            width: var(--touch-size);
+            height: var(--touch-size);
+            background-color: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: rgba(255,255,255,0.6);
+            font-size: 13px;
+            transition: all 0.1s ease;
+        }
+
+        .touch-point.glowing {
+            background-color: rgba(0, 255, 115, 0.2);
+            border-color: #00ff73;
+            color: #fff;
+            box-shadow: 0 0 15px var(--active-glow), inset 0 0 10px var(--active-glow);
+            transform: scale(1.1);
+        }
+
+        #device-error {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: #000;
+            color: #fff;
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+            text-align: center;
+            padding: 20px;
+            font-size: 20px;
+        }
     </style>
 </head>
 <body>
 
-<div id="force-overlay">
-    <button id="btn-confirm">进入3D空间</button>
-    <div id="progress-container">
-        <div id="progress-bar"></div>
+    <div id="device-error">请在安卓手机上打开</div>
+
+    <div id="status-label" class="status-waiting">请将双手的食指放到两侧</div>
+
+    <div class="touch-container">
+        <div id="top-group" class="top-group">
+            <div class="touch-point" id="T1">T1</div>
+            <div class="touch-point" id="T2">T2</div>
+        </div>
+
+        <div class="side-group">
+            <div class="touch-point finger-layer" id="L1">尾指</div>
+            <div class="touch-point finger-layer" id="L2">无名指</div>
+            <div class="touch-point finger-layer" id="L3">中指</div>
+            <div class="touch-point visible" id="L4">食指</div>
+        </div>
+
+        <div class="side-group">
+            <div class="touch-point finger-layer" id="R1">尾指</div>
+            <div class="touch-point finger-layer" id="R2">无名指</div>
+            <div class="touch-point finger-layer" id="R3">中指</div>
+            <div class="touch-point visible" id="R4">食指</div>
+        </div>
     </div>
-    <div id="progress-text">在手机设备移动视角测试</div>
-</div>
 
-<div id="hud">系统状态: 待机</div>
+    <script>
+        (function() {
+            const ua = navigator.userAgent.toLowerCase();
+            const isAndroid = ua.indexOf("android") > -1;
+            if (!isAndroid) {
+                document.getElementById('device-error').style.display = 'flex';
+                return;
+            }
 
-<script type="module">
-    import * as THREE from 'https://cdn.skypack.dev/three@0.128.0';
-    import { DeviceOrientationControls } from 'https://cdn.skypack.dev/three@0.128.0/examples/jsm/controls/DeviceOrientationControls.js';
-    import { GLTFLoader } from 'https://cdn.skypack.dev/three@0.128.0/examples/jsm/loaders/GLTFLoader.js';
+            const statusLabel = document.getElementById('status-label');
+            const topGroup = document.getElementById('top-group');
+            const points = document.querySelectorAll('.touch-point');
+            const touchState = { T1: false, T2: false, L1: false, L2: false, L3: false, L4: false, R1: false, R2: false, R3: false, R4: false };
 
-    let scene, camera, renderer, controls;
-    let isRunning = false;
+            function updateUI() {
+                const indexOn = touchState.L4 && touchState.R4;
+                const middleOn = indexOn && touchState.L3 && touchState.R3;
+                const ringOn = middleOn && touchState.L2 && touchState.R2;
+                const littleOn = ringOn && touchState.L1 && touchState.R1;
+                const allOn = littleOn && touchState.T1 && touchState.T2;
 
-    function initScene() {
-        scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x050505);
-        
-        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(1, -1.5, 1); 
-        
-        renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-        renderer.outputEncoding = THREE.sRGBEncoding;
-        renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        renderer.toneMappingExposure = 1.2;
-        document.body.appendChild(renderer.domElement);
+                document.getElementById('L3').classList.toggle('visible', indexOn);
+                document.getElementById('R3').classList.toggle('visible', indexOn);
+                document.getElementById('L2').classList.toggle('visible', middleOn);
+                document.getElementById('R2').classList.toggle('visible', middleOn);
+                document.getElementById('L1').classList.toggle('visible', ringOn);
+                document.getElementById('R1').classList.toggle('visible', ringOn);
+                topGroup.classList.toggle('visible', littleOn);
 
-        const ambient = new THREE.AmbientLight(0xffffff, 1.0);
-        scene.add(ambient);
-
-        const light = new THREE.DirectionalLight(0xffffff, 1.5);
-        light.position.set(10, 10, 10);
-        scene.add(light);
-
-        loadModel();
-        controls = new DeviceOrientationControls(camera);
-    }
-
-    function loadModel() {
-        const loader = new GLTFLoader();
-        const pBar = document.getElementById('progress-bar');
-        const pText = document.getElementById('progress-text');
-        
-        document.getElementById('progress-container').style.display = 'block';
-
-        loader.load(
-            '4444.glb',
-            (gltf) => {
-                const model = gltf.scene;
-                const box = new THREE.Box3().setFromObject(model);
-                const center = box.getCenter(new THREE.Vector3());
-                model.position.sub(center); 
-                scene.add(model);
-                
-                document.getElementById('force-overlay').style.display = 'none';
-                isRunning = true;
-                animate();
-            },
-            (xhr) => {
-                if (xhr.lengthComputable) {
-                    const percent = (xhr.loaded / xhr.total * 100);
-                    pBar.style.width = percent + '%';
-                    pText.innerText = `正在加载资源: ${Math.round(percent)}%`;
+                if (allOn) {
+                    statusLabel.textContent = "我们两个结婚吧";
+                    statusLabel.className = "status-final";
+                } else if (littleOn) {
+                    statusLabel.textContent = "再找身边一个人触发上面";
+                    statusLabel.className = "status-success";
+                } else if (ringOn) {
+                    statusLabel.textContent = "请按下尾指";
+                    statusLabel.className = "status-waiting";
+                } else if (middleOn) {
+                    statusLabel.textContent = "请按下无名指";
+                    statusLabel.className = "status-waiting";
+                } else if (indexOn) {
+                    statusLabel.textContent = "请按下中指";
+                    statusLabel.className = "status-waiting";
+                } else {
+                    statusLabel.textContent = "请把左右食指放到两侧";
+                    statusLabel.className = "status-waiting";
                 }
-            },
-            (error) => {
-                pText.innerText = '资源加载错误';
-                console.error(error);
             }
-        );
-    }
 
-    function animate() {
-        requestAnimationFrame(animate);
-        if (isRunning) {
-            controls.update();
-            const { x, y, z } = camera.rotation;
-            document.getElementById('hud').innerText = `垂直角度: ${x.toFixed(3)}\n水平角度: ${y.toFixed(3)}`;
-            renderer.render(scene, camera);
-        }
-    }
-
-    document.getElementById('btn-confirm').onclick = async () => {
-        try {
-            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-                const res = await DeviceOrientationEvent.requestPermission();
-                if (res !== 'granted') return alert("权限请求被拒绝。");
-            }
-            document.getElementById('btn-confirm').style.display = 'none';
-            initScene();
-        } catch (e) {
-            alert("请确保使用 HTTPS 协议并在移动设备上访问。");
-        }
-    };
-
-    window.addEventListener('resize', () => {
-        if (!camera || !renderer) return;
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-    });
-</script>
-    <style>
-    #pc-blocked-overlay {
-        position: fixed;
-        inset: 0;
-        z-index: 10000;
-        background: #000;
-        display: none; /* 默认隐藏，由脚本控制 */
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-        color: #fff;
-        text-align: center;
-        padding: 40px;
-    }
-    .pc-icon {
-        font-size: 48px;
-        margin-bottom: 20px;
-        filter: drop-shadow(0 0 10px #ff3b30);
-    }
-    .pc-msg-title {
-        font-size: 18px;
-        font-weight: bold;
-        letter-spacing: 1px;
-        margin-bottom: 10px;
-    }
-    .pc-msg-body {
-        font-size: 13px;
-        color: #888;
-        line-height: 1.6;
-        max-width: 280px;
-    }
-</style>
-
-<div id="pc-blocked-overlay">
-    <div class="pc-icon">检测为PC端</div>
-    <div class="pc-msg-title">请使用移动设备访问</div>
-    <div class="pc-msg-body">
-        当前场景依赖陀螺仪传感器进行视角控制，请通过手机浏览器扫描或访问以获得最佳体验。
-    </div>
-</div>
-
-<script>
-    (function() {
-        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        if (!isMobile) {
-            document.addEventListener('DOMContentLoaded', () => {
-                const overlay = document.getElementById('pc-blocked-overlay');
-                overlay.style.display = 'flex';
-                const btn = document.getElementById('btn-confirm');
-                if (btn) btn.disabled = true;
+            points.forEach(p => {
+                const handleTouch = (val) => (e) => {
+                    e.preventDefault(); e.stopPropagation();
+                    if (val && !p.classList.contains('visible')) return;
+                    touchState[p.id] = val;
+                    p.classList.toggle('glowing', val);
+                    updateUI();
+                };
+                p.addEventListener('touchstart', handleTouch(true), {passive: false});
+                p.addEventListener('touchend', handleTouch(false));
+                p.addEventListener('touchcancel', handleTouch(false));
+                p.addEventListener('touchmove', e => e.preventDefault(), {passive: false});
             });
-            console.warn("Architecture limit: Mobile device required for Orientation API.");
-        }
-    })();
-</script>
+
+            document.addEventListener('touchstart', e => { if(e.touches.length > 1) e.preventDefault(); }, {passive: false});
+            document.addEventListener('touchmove', e => e.preventDefault(), {passive: false});
+            document.addEventListener('contextmenu', e => e.preventDefault());
+        })();
+    </script>
 </body>
 </html>
