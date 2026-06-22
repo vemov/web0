@@ -3,20 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<meta property="og:image" content="./logo.jpg">
-<meta property="og:image:secure_url" content="./logo.jpg">
-<link rel="apple-touch-icon" href="./logo.jpg">
-<link rel="shortcut icon" href="./logo.jpg">
-<link rel="icon" href="./logo.jpg">
-<link rel="apple-touch-icon-precomposed" href="./logo.jpg">
-<meta name="msapplication-TileImage" content="./logo.jpg">
+    <meta property="og:image" content="./logo.jpg">
+    <meta property="og:image:secure_url" content="./logo.jpg">
+    <link rel="apple-touch-icon" href="./logo.jpg">
+    <link rel="shortcut icon" href="./logo.jpg">
+    <link rel="icon" href="./logo.jpg">
+    <link rel="apple-touch-icon-precomposed" href="./logo.jpg">
+    <meta name="msapplication-TileImage" content="./logo.jpg">
     <title>体适能</title>
-
     <style>
         html, body {
             margin: 0;
             padding: 0;
             height: 100%;
+            overflow: hidden;
         }
         body {
             min-height: 100vh;
@@ -27,28 +27,27 @@
                 #ffffff 50%,
                 #ffffff 100%
             );
-
+            background-attachment: fixed;
+            background-repeat: no-repeat;
             display: flex;
             flex-direction: column;
             align-items: center;
         }
-
         .comic-container {
             width: 100%;
             max-width: 900px;
             padding: 0;
             box-sizing: border-box;
         }
-
         .image-wrapper {
             width: 100%;
             margin-bottom: 0;
             position: relative;
+            background: transparent; 
             display: flex;
             align-items: center;
             justify-content: center;
         }
-
         canvas {
             display: block;
             width: 100%;
@@ -56,55 +55,44 @@
         }
     </style>
 </head>
-
 <body>
     <div id="comic-container" class="comic-container"></div>
-
     <script>
-(function() {
+        (function() {
+            const container = document.getElementById('comic-container');
+            const wrapper = document.createElement('div');
+            wrapper.className = 'image-wrapper';
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const img = new Image();
+            img.src = "./input.jpg?v=" + Date.now();
+            img.onload = () => {
+                const wrapperWidth = wrapper.getBoundingClientRect().width;
+                const ratio = img.height / img.width;
+                const dpr = window.devicePixelRatio || 1;
+                canvas.width = wrapperWidth * dpr;
+                canvas.height = wrapperWidth * ratio * dpr;
+                canvas.style.width = "100%";
+                canvas.style.height = "auto";
+                ctx.scale(dpr, dpr);
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = "high";
+                ctx.drawImage(
+                    img,
+                    0,
+                    0,
+                    wrapperWidth,
+                    wrapperWidth * ratio
+                );
 
-    const container = document.getElementById('comic-container');
+                window.scrollTo(0, (document.documentElement.scrollHeight - document.documentElement.clientHeight) / 2);
+            };
+            wrapper.appendChild(canvas);
+            container.appendChild(wrapper);
 
-    const wrapper = document.createElement('div');
-    wrapper.className = 'image-wrapper';
-
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-
-    const img = new Image();
-    img.src = "./input.jpg?v=" + Date.now();
-
-    img.onload = () => {
-
-        const wrapperWidth = wrapper.getBoundingClientRect().width;
-        const ratio = img.height / img.width;
-
-        const dpr = window.devicePixelRatio || 1;
-
-        canvas.width = wrapperWidth * dpr;
-        canvas.height = wrapperWidth * ratio * dpr;
-
-        canvas.style.width = "100%";
-        canvas.style.height = "auto";
-
-        ctx.scale(dpr, dpr);
-
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = "high";
-
-        ctx.drawImage(
-            img,
-            0,
-            0,
-            wrapperWidth,
-            wrapperWidth * ratio
-        );
-    };
-
-    wrapper.appendChild(canvas);
-    container.appendChild(wrapper);
-
-})();
+            window.addEventListener('wheel', e => e.preventDefault(), { passive: false });
+            window.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+        })();
     </script>
 </body>
 </html>
