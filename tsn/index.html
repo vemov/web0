@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="zh">
 <head>
-    <meta charset="UTF-8">
+     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta http-equiv="Cache-Control" content="max-age=2592000, public">
     <meta property="og:image" content="./logo.jpg">
@@ -43,7 +43,7 @@
             width: 100%;
             margin-bottom: 0;
             position: relative;
-            background: transparent; 
+            background: transparent;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -53,41 +53,72 @@
             width: 100%;
             height: auto;
         }
+        #controls {
+            padding: 20px;
+            width: 100%;
+            text-align: center;
+            background: white;
+            z-index: 1000;
+        }
     </style>
 </head>
 <body>
-    <div id="comic-container" class="comic-container"></div>
+
+    <div class="controls" id="controls">
+        <input type="file" id="uploadBase" accept="image/*">
+    </div>
+    <div id="comic-container" class="comic-container">
+        <div class="image-wrapper" id="image-wrapper">
+            <canvas id="canvas"></canvas>
+        </div>
+    </div>
+
     <script>
-(function() {
-    const container = document.getElementById('comic-container');
-    const wrapper = document.createElement('div');
-    wrapper.className = 'image-wrapper';
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    const img = new Image();
-    img.src = "./input.jpg?v=" + Date.now();
-    img.onload = () => {
-        const wrapperWidth = wrapper.getBoundingClientRect().width;
-        const ratio = img.height / img.width;
-        const dpr = window.devicePixelRatio || 1;
-        canvas.width = wrapperWidth * dpr;
-        canvas.height = wrapperWidth * ratio * dpr;
-        canvas.style.width = "100%";
-        canvas.style.height = "auto";
-        ctx.scale(dpr, dpr);
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = "high";
-        ctx.drawImage(
-            img,
-            0,
-            0,
-            wrapperWidth,
-            wrapperWidth * ratio
-        );
-    };
-    wrapper.appendChild(canvas);
-    container.appendChild(wrapper);
-})();
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const controls = document.getElementById('controls');
+        const maskImg = new Image();
+        let baseImg = null;
+        let maskLoaded = false;
+
+        function draw() {
+            if (!maskLoaded) return;
+            const wrapper = document.getElementById('image-wrapper');
+            const wrapperWidth = wrapper.getBoundingClientRect().width;
+            const ratio = maskImg.height / maskImg.width;
+            const dpr = window.devicePixelRatio || 1;
+            
+            canvas.width = wrapperWidth * dpr;
+            canvas.height = wrapperWidth * ratio * dpr;
+            ctx.scale(dpr, dpr);
+            ctx.clearRect(0, 0, wrapperWidth, wrapperWidth * ratio);
+
+            if (baseImg) {
+                ctx.drawImage(baseImg, 0, 0, wrapperWidth, wrapperWidth * ratio);
+            }
+            ctx.drawImage(maskImg, 0, 0, wrapperWidth, wrapperWidth * ratio);
+        }
+
+        maskImg.src = "./input.png?v=" + Date.now();
+        maskImg.onload = () => {
+            maskLoaded = true;
+            draw();
+        };
+
+        document.getElementById('uploadBase').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                baseImg = new Image();
+                baseImg.onload = () => {
+                    draw();
+                    controls.style.display = 'none';
+                };
+                baseImg.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
     </script>
 </body>
 </html>
